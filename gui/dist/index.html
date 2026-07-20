@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>scredmanager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>scredmanager</h1>
+    <div class="header-actions">
+      <label class="setting">
+        <input type="checkbox" id="notify-on-launch" /> notify on launch
+      </label>
+      <button id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="banner" class="banner hidden"></div>
+
+    <section>
+      <h2>Services</h2>
+      <div id="services" class="list"></div>
+    </section>
+
+    <section>
+      <h2>Other entries</h2>
+      <div id="entries" class="list"></div>
+    </section>
+
+    <section>
+      <h2>Import dotenv</h2>
+      <div class="import-row">
+        <input type="text" id="import-path" placeholder="~/.agentsecrets" />
+        <button id="import-btn">Import</button>
+      </div>
+      <p class="hint">One keychain entry per <code>export KEY=value</code> line. Shred the source file afterwards.</p>
+    </section>
+  </main>
+
+  <footer id="log"></footer>
+  <script src="main.js"></script>
+</body>
+</html>

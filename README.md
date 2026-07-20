@@ -93,6 +93,29 @@ scredmanager run -- ./script.sh        # replaces `source ~/.agentsecrets`
 rm -P ~/.agentsecrets
 ```
 
+## GUI (M7, Tauri v2)
+
+One engine (the CLI), two front-ends. **The GUI never owns a secret and never
+touches the keychain** — the Rust backend does nothing but spawn
+`scredmanager <cmd> --json` and relay the envelope to a static HTML/JS view
+(no npm, no bundler; `withGlobalTauri`).
+
+```sh
+make gui-run      # dev: compile + open the window (needs Rust: brew install rust)
+make gui          # release binary at gui/src-tauri/target/release/scredmanager-gui
+make gui-audit    # verify no keychain/Security.framework dependency in gui/
+```
+
+- Service list with status/expiry badges (green/amber/red) from `status --json`
+- Per-service **Login** button: clipboard capture by default, device-code flow
+  when the manifest configures `deviceFlow` (masked prompt needs a TTY, so the
+  GUI never uses it)
+- **Import dotenv** field, ad-hoc entry management, expiry banner
+- "notify on launch" setting reuses `status --quiet --notify` — can replace
+  the launchd job
+- `get`/`run`/`export` are deliberately **not** exposed: no secret ever enters
+  the GUI process
+
 ## Development
 
 ```sh
@@ -107,3 +130,5 @@ Security discipline (enforced in review):
    redact helper wraps all error paths.
 2. Every file write: 0600 + atomic; every dir: 0700.
 3. `get` TTY refusal and `curl` host allowlist are hard behavior, not flags.
+4. GUI has no keychain code path (`make gui-audit`) and no secret-bearing
+   commands in its IPC whitelist.

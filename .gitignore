@@ -1,2 +1,4 @@
 bin/
 *.test
+gui/src-tauri/target/
+gui/src-tauri/gen/
