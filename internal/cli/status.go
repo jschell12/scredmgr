@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -17,7 +19,7 @@ type statusInfo struct {
 }
 
 func newStatusCmd() *cobra.Command {
-	var quiet bool
+	var quiet, notify bool
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show entry health with ≤7-day expiry warnings",
@@ -29,6 +31,7 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 			var rows []statusInfo
+			var warnLines []string
 			warnings := 0
 			for _, e := range entries {
 				s := statusInfo{entryInfo: e, State: "no-expiry"}
@@ -37,14 +40,22 @@ func newStatusCmd() *cobra.Command {
 					case *e.DaysLeft < 0:
 						s.State = "expired"
 						warnings++
+						warnLines = append(warnLines, fmt.Sprintf("%s: EXPIRED", e.ID))
 					case *e.DaysLeft <= expiryWarnDays:
 						s.State = "expiring"
 						warnings++
+						warnLines = append(warnLines, fmt.Sprintf("%s: %dd left", e.ID, *e.DaysLeft))
 					default:
 						s.State = "ok"
 					}
 				}
 				rows = append(rows, s)
+			}
+
+			if notify && warnings > 0 {
+				if err := postNotification("scredmanager", strings.Join(warnLines, ", ")); err != nil {
+					fmt.Fprintf(os.Stderr, "notification failed: %v\n", err)
+				}
 			}
 
 			if jsonOut {
@@ -82,5 +93,13 @@ func newStatusCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "only print expiring/expired entries (for launchd)")
+	cmd.Flags().BoolVar(&notify, "notify", false, "post a macOS notification when entries are expiring/expired")
 	return cmd
+}
+
+// postNotification shows a native notification via osascript. Only entry ids
+// and day counts are included — never secret material.
+func postNotification(title, message string) error {
+	script := fmt.Sprintf("display notification %q with title %q", message, title)
+	return exec.Command("osascript", "-e", script).Run()
 }

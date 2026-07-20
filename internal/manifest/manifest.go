@@ -20,6 +20,22 @@ type Service struct {
 	AuthHeader string `json:"authHeader,omitempty"`
 	ExpiryDays int    `json:"expiryDays,omitempty"`
 	TokenPage  string `json:"tokenPage,omitempty"`
+
+	// TokenPattern is an optional regex a clipboard-captured token must match
+	// (e.g. "^ghp_[A-Za-z0-9]{36}$").
+	TokenPattern string `json:"tokenPattern,omitempty"`
+
+	// DeviceFlow enables the OAuth device-code grant for `login`.
+	DeviceFlow *DeviceFlow `json:"deviceFlow,omitempty"`
+}
+
+// DeviceFlow configures RFC 8628 device authorization for a service.
+// URLs default to GitHub's endpoints when omitted.
+type DeviceFlow struct {
+	ClientID      string `json:"clientId"`
+	Scope         string `json:"scope,omitempty"`
+	DeviceAuthURL string `json:"deviceAuthUrl,omitempty"`
+	TokenURL      string `json:"tokenUrl,omitempty"`
 }
 
 // Load reads the manifest. A missing file yields an empty manifest.
