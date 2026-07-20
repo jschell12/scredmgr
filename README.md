@@ -33,8 +33,36 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 | `import <dotenv>` | One keychain entry per `export KEY=value` line |
 | `export` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
 | `services` | Emit the manifest |
+| `login <id>` | Guided mint: open `tokenPage`, capture (masked prompt / `--clipboard` / device-code flow), verify fail-closed, store with expiry |
+| `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 (native notification on ≤7-day expiries) |
 
 Every command supports `--json` (`schemaVersion: 1` envelope).
+
+## Guided login (M6)
+
+No headless-browser automation — three capture modes:
+
+- **Masked prompt** (default): opens `tokenPage` in your real browser; paste the
+  fresh token into a no-echo prompt.
+- **`--clipboard`**: polls the clipboard for a *new* value matching the
+  service's optional `tokenPattern` regex, then clears the clipboard after
+  storing.
+- **Device-code flow** (automatic when the manifest has `deviceFlow`): pure
+  RFC 8628 API — shows a user code, opens the verification page, polls for the
+  token. GitHub endpoints are the defaults:
+
+```json
+{
+  "id": "github",
+  "envVar": "GITHUB_TOKEN",
+  "baseUrl": "https://api.github.com",
+  "checkPath": "/user",
+  "tokenPattern": "^(ghp|gho)_[A-Za-z0-9]{36}$",
+  "deviceFlow": { "clientId": "<oauth-app-client-id>", "scope": "repo" }
+}
+```
+
+Captured tokens are verified against `checkPath` before storage (fail closed).
 
 ## Services manifest
 
