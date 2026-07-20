@@ -1,0 +1,17 @@
+[package]
+name = "scredmanager-gui"
+version = "0.1.0"
+edition = "2021"
+description = "GUI front-end for scredmanager — spawns the CLI, never touches the keychain"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true
+lto = true
