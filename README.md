@@ -135,9 +135,23 @@ Entries are PASSWORD items titled `<itemPrefix><id>`. Reads use `op item get
 (stdin). Updates are delete-then-create because `op item edit` only takes
 values on argv.
 
-Planned provider types (same config file): `aws-sm` / `aws-ps` (`aws` CLI),
-`lastpass` (**pull-only** — upstream CLI is unmaintained, so it stays out of
-the write path).
+**AWS** (`type: aws-sm` for Secrets Manager, `type: aws-ps` for SSM Parameter
+Store) drives the `aws` CLI, inheriting profiles/SSO/region handling:
+
+```json
+{"name": "aws-sm", "type": "aws-sm",
+ "aws": {"region": "us-east-1", "profile": "personal", "prefix": "scredmanager/"}},
+{"name": "aws-ps", "type": "aws-ps",
+ "aws": {"region": "us-east-1", "profile": "personal", "prefix": "/scredmanager/"}}
+```
+
+`--secret-string` / `--value` would leak on argv, so writes pipe their
+payload via `--cli-input-json file:///dev/stdin`. SM updates fall back from
+`create-secret` to `put-secret-value`; PS writes SecureString with
+Overwrite. `Check` is `sts get-caller-identity`.
+
+Planned provider types (same config file): `lastpass` (**pull-only** —
+upstream CLI is unmaintained, so it stays out of the write path).
 
 ## Services manifest
 

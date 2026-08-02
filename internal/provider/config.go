@@ -114,6 +114,16 @@ func Open(cfg Config, secrets store.Store) (Provider, error) {
 			return nil, fmt.Errorf("provider %s: missing op config", cfg.Name)
 		}
 		return NewOp(cfg.Name, *cfg.Op, ExecRunner), nil
+	case "aws-sm":
+		if cfg.AWS == nil {
+			return nil, fmt.Errorf("provider %s: missing aws config", cfg.Name)
+		}
+		return NewAWSSM(cfg.Name, *cfg.AWS, ExecRunner), nil
+	case "aws-ps":
+		if cfg.AWS == nil {
+			return nil, fmt.Errorf("provider %s: missing aws config", cfg.Name)
+		}
+		return NewAWSPS(cfg.Name, *cfg.AWS, ExecRunner), nil
 	default:
 		return nil, fmt.Errorf("provider %s: unsupported type %q", cfg.Name, cfg.Type)
 	}
