@@ -124,6 +124,11 @@ func Open(cfg Config, secrets store.Store) (Provider, error) {
 			return nil, fmt.Errorf("provider %s: missing aws config", cfg.Name)
 		}
 		return NewAWSPS(cfg.Name, *cfg.AWS, ExecRunner), nil
+	case "lastpass":
+		if cfg.Lastpass == nil {
+			return nil, fmt.Errorf("provider %s: missing lastpass config", cfg.Name)
+		}
+		return NewLastpass(cfg.Name, *cfg.Lastpass, ExecRunner), nil
 	default:
 		return nil, fmt.Errorf("provider %s: unsupported type %q", cfg.Name, cfg.Type)
 	}
