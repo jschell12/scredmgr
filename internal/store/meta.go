@@ -149,7 +149,8 @@ func DeleteMeta(id string) error {
 	return nil
 }
 
-// ListIDs returns all entry ids (metadata files), excluding the manifest.
+// ListIDs returns all entry ids (metadata files), excluding the manifest and
+// provider config.
 func ListIDs() ([]string, error) {
 	dir, err := HomeDir()
 	if err != nil {
@@ -166,7 +167,7 @@ func ListIDs() ([]string, error) {
 			continue
 		}
 		id := strings.TrimSuffix(name, ".json")
-		if id == "services" {
+		if id == "services" || id == "providers" {
 			continue
 		}
 		ids = append(ids, id)
