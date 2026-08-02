@@ -150,8 +150,18 @@ payload via `--cli-input-json file:///dev/stdin`. SM updates fall back from
 `create-secret` to `put-secret-value`; PS writes SecureString with
 Overwrite. `Check` is `sts get-caller-identity`.
 
-Planned provider types (same config file): `lastpass` (**pull-only** —
-upstream CLI is unmaintained, so it stays out of the write path).
+**LastPass** (`type: lastpass`) is **pull-only**: the upstream `lpass` CLI
+is unmaintained, so it is deliberately kept out of the write path
+(`sync --push` is refused; Put/Delete return read-only errors). Intended for
+break-glass recovery of secrets that already live in LastPass:
+
+```json
+{"name": "old-lastpass", "type": "lastpass",
+ "lastpass": {"folder": "scredmanager"}}
+```
+
+Entries are `<folder>/<id>`; reads use `lpass show --password` (secret on
+stdout). Log in first with `lpass login <email>`.
 
 ## Services manifest
 
