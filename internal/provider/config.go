@@ -109,6 +109,11 @@ func Open(cfg Config, secrets store.Store) (Provider, error) {
 			return nil, fmt.Errorf("provider %s: missing vault config", cfg.Name)
 		}
 		return NewVault(cfg.Name, *cfg.Vault, secrets), nil
+	case "1password":
+		if cfg.Op == nil {
+			return nil, fmt.Errorf("provider %s: missing op config", cfg.Name)
+		}
+		return NewOp(cfg.Name, *cfg.Op, ExecRunner), nil
 	default:
 		return nil, fmt.Errorf("provider %s: unsupported type %q", cfg.Name, cfg.Type)
 	}
