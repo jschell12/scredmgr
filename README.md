@@ -121,9 +121,23 @@ needed. The token comes from the keychain entry named by `tokenRef` (the
 Vault token is itself a managed, expirable secret) with `VAULT_TOKEN` as
 fallback. LIST is single-level: nested paths under the prefix are skipped.
 
-Planned provider types (same config file): `1password` (`op` CLI), `aws-sm` /
-`aws-ps` (`aws` CLI), `lastpass` (**pull-only** — upstream CLI is
-unmaintained, so it stays out of the write path).
+**1Password** (`type: 1password`) drives the official `op` CLI (biometric
+auth stays op's problem — run sync from a real terminal, not headless):
+
+```json
+{"name": "op-private", "type": "1password",
+ "op": {"vault": "Private", "account": "my.1password.com",
+        "itemPrefix": "scredmanager/"}}
+```
+
+Entries are PASSWORD items titled `<itemPrefix><id>`. Reads use `op item get
+--reveal` (secret on stdout); writes pipe item JSON to `op item create -`
+(stdin). Updates are delete-then-create because `op item edit` only takes
+values on argv.
+
+Planned provider types (same config file): `aws-sm` / `aws-ps` (`aws` CLI),
+`lastpass` (**pull-only** — upstream CLI is unmaintained, so it stays out of
+the write path).
 
 ## Services manifest
 
