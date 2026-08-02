@@ -14,6 +14,7 @@ const (
 	StorageKeychain = "keychain"
 	StorageFile     = "file"
 	StorageMixed    = "mixed"
+	StorageNone     = "none" // no keychain item (e.g. ssh key without a stored passphrase)
 )
 
 // Meta is the non-secret metadata for one entry, stored as
@@ -24,6 +25,20 @@ type Meta struct {
 	CreatedAt string `json:"createdAt,omitempty"`
 	ExpiresAt string `json:"expiresAt,omitempty"`
 	Notes     string `json:"notes,omitempty"`
+
+	// Kind marks the entry type: "" (token, the default) or "ssh".
+	Kind string `json:"kind,omitempty"`
+	// Fingerprint is the SHA256 fingerprint of an ssh key entry.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// KeyPath is the private key file path of an ssh key entry. The key file
+	// itself never enters the keychain; only the passphrase does.
+	KeyPath string `json:"keyPath,omitempty"`
+	// PublicKey is the full public key line of an ssh key entry (safe to show).
+	PublicKey string `json:"publicKey,omitempty"`
+
+	// SyncedFrom / SyncedAt record pull provenance from a remote provider.
+	SyncedFrom string `json:"syncedFrom,omitempty"`
+	SyncedAt   string `json:"syncedAt,omitempty"`
 
 	// Token holds a plaintext secret ONLY during the import-then-migrate
 	// window (Storage == "file" or "mixed"). It is stripped after a verified

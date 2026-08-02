@@ -26,7 +26,7 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 |---|---|
 | `set <id> [--from-stdin]` | Masked prompt or stdin (never argv). Fails closed if the service's live check rejects the token |
 | `get <id>` | Print secret to stdout — refuses if stdout is a TTY (exit 2) |
-| `rm <id>` / `ls` / `status` | Delete both halves / list entries / expiry table with ≤7-day warnings |
+| `rm <id> [--files]` / `ls` / `status` | Delete both halves (`--files` also deletes ssh key files) / list entries / expiry table with ≤7-day warnings |
 | `check <id>` | Live API verify via the service's `checkPath` |
 | `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
 | `run [--only a,b] -- <cmd…>` | Exec child with secrets as env vars — replaces `source ~/.agentsecrets` |
@@ -35,6 +35,8 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 | `services` | Emit the manifest |
 | `login <id>` | Guided mint: open `tokenPage`, capture (masked prompt / `--clipboard` / device-code flow), verify fail-closed, store with expiry |
 | `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 (native notification on ≤7-day expiries) |
+| `ssh keygen <name>` | Generate an ed25519 key pair; passphrase in keychain, metadata + rotation reminder in the ledger |
+| `ssh show <name>` / `ssh add <name>` | Public key + fingerprint (TTY-safe) / (re)register with ssh-agent via stored passphrase |
 
 Every command supports `--json` (`schemaVersion: 1` envelope).
 
@@ -63,6 +65,30 @@ No headless-browser automation — three capture modes:
 ```
 
 Captured tokens are verified against `checkPath` before storage (fail closed).
+
+## SSH keys (M8)
+
+`ssh keygen <name>` wraps `ssh-keygen -t ed25519`. **Private keys stay as files
+(default `~/.ssh/id_<name>`) and never enter the keychain** — scredmanager owns
+the ledger: metadata under id `ssh:<name>` (fingerprint, key path, rotation
+expiry — default 365 days, surfaced by `ls`/`status` and the daily launchd
+notification) and, optionally, the passphrase in the keychain.
+
+Exactly one passphrase mode is required: `--passphrase-random` (32 random
+bytes, stored in keychain — recommended), `--passphrase-prompt` (masked
+prompt, stored), or `--no-passphrase` (explicit opt-out).
+
+**How the passphrase reaches ssh-keygen without leaking:** `-N <pass>` would
+put it on argv (visible in `ps`), so scredmanager instead sets
+`SSH_ASKPASS=<itself>` + `SSH_ASKPASS_REQUIRE=force` (OpenSSH ≥ 8.4) and
+re-execs itself as the askpass helper. Only the entry **id** rides in the
+environment; the passphrase travels keychain → helper stdout → ssh-keygen's
+own pipe. The same mechanism drives `ssh add` (`ssh-add
+--apple-use-keychain`). Add `UseKeychain yes` to `~/.ssh/config` for agent
+persistence across reboots.
+
+`get ssh:<name>` prints the passphrase under the usual non-TTY discipline;
+`rm ssh:<name> --files` also deletes the key pair files.
 
 ## Services manifest
 
@@ -127,7 +153,8 @@ make build
 Security discipline (enforced in review):
 
 1. Secrets travel via stdin/prompt/keychain API — never argv, never logs; the
-   redact helper wraps all error paths.
+   redact helper wraps all error paths. For subprocesses this includes env:
+   secrets never ride on child argv or environment (askpass/stdin only).
 2. Every file write: 0600 + atomic; every dir: 0700.
 3. `get` TTY refusal and `curl` host allowlist are hard behavior, not flags.
 4. GUI has no keychain code path (`make gui-audit`) and no secret-bearing

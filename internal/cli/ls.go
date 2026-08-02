@@ -13,12 +13,14 @@ import (
 )
 
 type entryInfo struct {
-	ID        string `json:"id"`
-	Label     string `json:"label,omitempty"`
-	EnvVar    string `json:"envVar,omitempty"`
-	ExpiresAt string `json:"expiresAt,omitempty"`
-	Storage   string `json:"storage"`
-	DaysLeft  *int   `json:"daysLeft,omitempty"`
+	ID          string `json:"id"`
+	Label       string `json:"label,omitempty"`
+	EnvVar      string `json:"envVar,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	ExpiresAt   string `json:"expiresAt,omitempty"`
+	Storage     string `json:"storage"`
+	DaysLeft    *int   `json:"daysLeft,omitempty"`
 }
 
 func collectEntries(now time.Time) ([]entryInfo, error) {
@@ -33,7 +35,7 @@ func collectEntries(now time.Time) ([]entryInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		e := entryInfo{ID: id, Label: m.Label, EnvVar: m.EnvVar, ExpiresAt: m.ExpiresAt, Storage: m.Storage}
+		e := entryInfo{ID: id, Label: m.Label, EnvVar: m.EnvVar, Kind: m.Kind, Fingerprint: m.Fingerprint, ExpiresAt: m.ExpiresAt, Storage: m.Storage}
 		if d, ok := m.ExpiresIn(now); ok {
 			days := int(d.Hours() / 24)
 			e.DaysLeft = &days
