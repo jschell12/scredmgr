@@ -11,7 +11,7 @@ test:
 	go test ./...
 
 integration:
-	go test -tags darwin_integration ./internal/store/
+	go test -tags darwin_integration ./internal/store/ ./internal/cli/
 
 install: build
 	mkdir -p $(PREFIX)/bin
