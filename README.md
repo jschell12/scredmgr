@@ -37,6 +37,8 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 | `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 (native notification on ≤7-day expiries) |
 | `ssh keygen <name>` | Generate an ed25519 key pair; passphrase in keychain, metadata + rotation reminder in the ledger |
 | `ssh show <name>` / `ssh add <name>` | Public key + fingerprint (TTY-safe) / (re)register with ssh-agent via stored passphrase |
+| `sync <provider> --push\|--pull` | Copy secrets keychain ↔ remote provider (`--only`, `--dry-run`, `--overwrite`) |
+| `providers` / `providers check <name>` | List configured remote providers / probe connectivity and auth |
 
 Every command supports `--json` (`schemaVersion: 1` envelope).
 
@@ -89,6 +91,39 @@ persistence across reboots.
 
 `get ssh:<name>` prints the passphrase under the usual non-TTY discipline;
 `rm ssh:<name> --files` also deletes the key pair files.
+
+## Remote providers (M9)
+
+The keychain remains the **canonical local store**; remote backends are
+explicit, direction-only sync targets configured in
+`~/.scredmanager/providers.json` (must be 0600):
+
+```json
+{"providers": [
+  {"name": "homelab-vault", "type": "vault",
+   "vault": {"addr": "https://vault.local:8200", "mount": "secret",
+             "pathPrefix": "scredmanager/", "tokenRef": "vault-token"}}
+]}
+```
+
+- `sync <provider> --push` copies local entries to the provider (always
+  overwriting remote). `--pull` copies remote entries into the keychain,
+  skipping ones that already exist locally unless `--overwrite`. There is
+  **no merge and no delete propagation**; `--dry-run` shows the plan without
+  transferring any secret values.
+- SSH entries are never pushed unless explicitly named in `--only`
+  (passphrases don't belong remote by default).
+- Pulled entries get `syncedFrom`/`syncedAt` metadata plus manifest defaults
+  (env var, expiry) when the id matches a service.
+
+**Vault** (`type: vault`) speaks KV v2 over stdlib HTTP — no `vault` CLI
+needed. The token comes from the keychain entry named by `tokenRef` (the
+Vault token is itself a managed, expirable secret) with `VAULT_TOKEN` as
+fallback. LIST is single-level: nested paths under the prefix are skipped.
+
+Planned provider types (same config file): `1password` (`op` CLI), `aws-sm` /
+`aws-ps` (`aws` CLI), `lastpass` (**pull-only** — upstream CLI is
+unmaintained, so it stays out of the write path).
 
 ## Services manifest
 
