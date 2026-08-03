@@ -119,7 +119,9 @@ explicit, direction-only sync targets configured in
 **Vault** (`type: vault`) speaks KV v2 over stdlib HTTP — no `vault` CLI
 needed. The token comes from the keychain entry named by `tokenRef` (the
 Vault token is itself a managed, expirable secret) with `VAULT_TOKEN` as
-fallback. LIST is single-level: nested paths under the prefix are skipped.
+fallback. For a privately-signed endpoint, point `caCert` at the CA PEM file
+(fallback: `VAULT_CACERT`, same convention as the vault CLI). LIST is
+single-level: nested paths under the prefix are skipped.
 
 **1Password** (`type: 1password`) drives the official `op` CLI (biometric
 auth stays op's problem — run sync from a real terminal, not headless):

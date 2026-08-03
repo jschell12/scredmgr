@@ -3,6 +3,8 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,13 +28,32 @@ type Vault struct {
 }
 
 // NewVault returns a Vault provider. The token is resolved lazily on first use
-// from cfg.TokenRef (a scredmanager keychain entry) or $VAULT_TOKEN.
+// from cfg.TokenRef (a scredmanager keychain entry) or $VAULT_TOKEN. A private
+// CA for the Vault endpoint comes from cfg.CACert or $VAULT_CACERT (a PEM
+// file, same convention as the vault CLI).
 func NewVault(name string, cfg VaultCfg, secrets store.Store) *Vault {
+	client := &http.Client{Timeout: 15 * time.Second}
+	caPath := cfg.CACert
+	if caPath == "" {
+		caPath = os.Getenv("VAULT_CACERT")
+	}
+	if caPath != "" {
+		if pem, err := os.ReadFile(caPath); err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(pem) {
+				client.Transport = &http.Transport{
+					TLSClientConfig: &tls.Config{RootCAs: pool},
+				}
+			}
+		}
+		// Unreadable/invalid CA files fall through to the system pool; the
+		// TLS handshake error from do() then names the real problem.
+	}
 	return &Vault{
 		name:    name,
 		cfg:     cfg,
 		secrets: secrets,
-		client:  &http.Client{Timeout: 15 * time.Second},
+		client:  client,
 	}
 }
 
