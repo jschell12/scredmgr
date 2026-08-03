@@ -28,6 +28,9 @@ type VaultCfg struct {
 	// TokenRef names a scredmanager keychain entry holding the Vault token.
 	// Fallback: VAULT_TOKEN environment variable.
 	TokenRef string `json:"tokenRef,omitempty"`
+	// CACert is a PEM file with the CA for a privately-signed Vault endpoint.
+	// Fallback: VAULT_CACERT environment variable (vault CLI convention).
+	CACert string `json:"caCert,omitempty"`
 }
 
 // OpCfg configures the 1Password `op` CLI backend.
