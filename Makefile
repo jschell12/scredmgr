@@ -1,10 +1,16 @@
 BINARY := scredmanager
 PREFIX ?= $(HOME)/.local
+# Stable code signature so Keychain "Always Allow" ACL grants survive rebuilds.
+# Ad-hoc (linker) signatures change every build, which resets item ACLs and
+# causes a password prompt per secret. Override with CODESIGN_ID=- for ad-hoc.
+CODESIGN_ID ?= Apple Development
+BUNDLE_ID := com.jschell12.scredmanager
 
 .PHONY: build test integration vet install clean gui gui-run gui-audit
 
 build:
 	go build -o bin/$(BINARY) ./cmd/$(BINARY)
+	codesign -f -s "$(CODESIGN_ID)" --identifier $(BUNDLE_ID) bin/$(BINARY)
 
 test:
 	go vet ./...
