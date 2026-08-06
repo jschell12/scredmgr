@@ -59,8 +59,19 @@ func Load() ([]Service, error) {
 	return services, nil
 }
 
-// Find returns the service with the given id, or nil.
+// Find returns the service with the given id, or nil. A path-qualified entry
+// id falls back to its basename, so "work/github" matches service "github".
 func Find(services []Service, id string) *Service {
+	if svc := findExact(services, id); svc != nil {
+		return svc
+	}
+	if base := store.Basename(id); base != id {
+		return findExact(services, base)
+	}
+	return nil
+}
+
+func findExact(services []Service, id string) *Service {
 	for i := range services {
 		if services[i].ID == id {
 			return &services[i]

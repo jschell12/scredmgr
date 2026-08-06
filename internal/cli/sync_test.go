@@ -174,7 +174,7 @@ func TestSyncPull(t *testing.T) {
 	fake, home := withTestEnv(t)
 	fp := &fakeProvider{name: "fake", writable: true, data: map[string][]byte{
 		"REMOTE_TOKEN": []byte("r-secret"),
-		"bad/id":       []byte("nope"),
+		"../bad":       []byte("nope"),
 	}}
 	withFakeProvider(t, home, fp)
 
@@ -193,7 +193,7 @@ func TestSyncPull(t *testing.T) {
 		t.Fatalf("bad meta: %+v", m)
 	}
 	// invalid remote id must not land locally
-	if _, err := fake.Get("bad/id"); err == nil {
+	if _, err := fake.Get("../bad"); err == nil {
 		t.Fatal("invalid id pulled into store")
 	}
 }

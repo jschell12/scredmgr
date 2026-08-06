@@ -46,14 +46,24 @@ func collectEntries(now time.Time) ([]entryInfo, error) {
 }
 
 func newLsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ls",
+	var path string
+	cmd := &cobra.Command{
+		Use:   "ls [--path ns]",
 		Short: "List entries with expiry and storage provenance",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := collectEntries(time.Now())
 			if err != nil {
 				return err
+			}
+			if path != "" {
+				filtered := entries[:0]
+				for _, e := range entries {
+					if store.PathOf(e.ID) == path {
+						filtered = append(filtered, e)
+					}
+				}
+				entries = filtered
 			}
 			if jsonOut {
 				emit(entries)
@@ -78,6 +88,8 @@ func newLsCmd() *cobra.Command {
 			return w.Flush()
 		},
 	}
+	cmd.Flags().StringVar(&path, "path", "", "only show entries in this namespace (e.g. work)")
+	return cmd
 }
 
 func orDash(s string) string {

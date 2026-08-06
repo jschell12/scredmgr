@@ -112,6 +112,10 @@ func WriteMeta(id string, m *Meta) error {
 	data = append(data, '\n')
 
 	dir := filepath.Dir(p)
+	// Path-qualified ids ("work/jira") live in nested directories.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(p)+".tmp-*")
 	if err != nil {
 		return err
@@ -137,7 +141,9 @@ func WriteMeta(id string, m *Meta) error {
 	return os.Rename(tmpName, p)
 }
 
-// DeleteMeta removes the metadata file for id. Missing files are not an error.
+// DeleteMeta removes the metadata file for id. Missing files are not an
+// error. Empty namespace directories left behind are pruned up to (but not
+// including) the home directory.
 func DeleteMeta(id string) error {
 	p, err := metaPath(id)
 	if err != nil {
@@ -146,31 +152,55 @@ func DeleteMeta(id string) error {
 	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	home, err := HomeDir()
+	if err != nil {
+		return nil
+	}
+	for dir := filepath.Dir(p); dir != home && strings.HasPrefix(dir, home+string(filepath.Separator)); dir = filepath.Dir(dir) {
+		// Remove fails on non-empty directories; stop at the first one.
+		if err := os.Remove(dir); err != nil {
+			break
+		}
+	}
 	return nil
 }
 
 // ListIDs returns all entry ids (metadata files), excluding the manifest and
-// provider config.
+// provider config. Entries in namespace subdirectories are returned as
+// path-qualified ids ("work/jira").
 func ListIDs() ([]string, error) {
 	dir, err := HomeDir()
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
 	var ids []string
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".json") || strings.HasPrefix(name, ".") {
-			continue
+	err = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		id := strings.TrimSuffix(name, ".json")
+		name := d.Name()
+		if d.IsDir() {
+			if p != dir && strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".json") || strings.HasPrefix(name, ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		id := strings.TrimSuffix(filepath.ToSlash(rel), ".json")
 		if id == "services" || id == "providers" {
-			continue
+			return nil
 		}
 		ids = append(ids, id)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return ids, nil
 }

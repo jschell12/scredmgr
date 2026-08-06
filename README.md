@@ -29,9 +29,9 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 | `rm <id> [--files]` / `ls` / `status` | Delete both halves (`--files` also deletes ssh key files) / list entries / expiry table with ≤7-day warnings |
 | `check <id>` | Live API verify via the service's `checkPath` |
 | `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
-| `run [--only a,b] -- <cmd…>` | Exec child with secrets as env vars — replaces `source ~/.agentsecrets` |
+| `run [--path ns] [--only a,b] -- <cmd…>` | Exec child with secrets as env vars — replaces `source ~/.agentsecrets`. `--path` overlays a namespace over the root entries |
 | `import <dotenv>` | One keychain entry per `export KEY=value` line |
-| `export` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
+| `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
 | `services` | Emit the manifest |
 | `login <id>` | Guided mint: open `tokenPage`, capture (masked prompt / `--clipboard` / device-code flow), verify fail-closed, store with expiry |
 | `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 (native notification on ≤7-day expiries) |
@@ -164,6 +164,30 @@ break-glass recovery of secrets that already live in LastPass:
 
 Entries are `<folder>/<id>`; reads use `lpass show --password` (secret on
 stdout). Log in first with `lpass login <email>`.
+
+## Namespaced paths
+
+Ids may be namespaced with slash-separated path segments, so the same env var
+can map to different accounts:
+
+```sh
+scredmanager set jira --env-var JIRA_TOKEN          # personal (root)
+scredmanager set work/jira --env-var JIRA_TOKEN     # service account
+
+scredmanager run -- cmd               # JIRA_TOKEN = personal
+scredmanager run --path work -- cmd   # root entries + work/* overriding on envVar collision
+scredmanager ls --path work           # only work/* entries
+```
+
+- Root entries (no path) are always the base; `--path <ns>` overlays entries
+  directly under that namespace, overriding any base entry with the same
+  `envVar`. Without `--path`, only root entries are injected (unchanged).
+- `get`, `rm`, `check`, `curl`, `login`, and `sync --only` all accept
+  path-qualified ids.
+- Manifest lookup falls back to the basename: `work/github` inherits the
+  `github` service's `envVar`, live check, and expiry.
+- Metadata lives in nested dirs (`~/.scredmanager/work/jira.json`, 0700);
+  keychain accounts use the full id (`token/work/jira`).
 
 ## Services manifest
 

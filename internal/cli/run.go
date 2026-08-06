@@ -9,19 +9,21 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
 )
 
 func newRunCmd() *cobra.Command {
-	var only string
+	var (
+		only string
+		path string
+	)
 	cmd := &cobra.Command{
-		Use:   "run [--only a,b] -- <cmd…>",
+		Use:   "run [--path ns] [--only a,b] -- <cmd…>",
 		Short: "Exec a child with secrets injected as env vars (replaces `source ~/.agentsecrets`)",
-		Long: "Fetches every entry that has an envVar, injects them into the environment of\n" +
-			"the child process, and execs it. The env exists only in the child — nothing\n" +
-			"lands on disk and the parent shell sees nothing.",
+		Long: "Fetches every root entry that has an envVar, injects them into the environment\n" +
+			"of the child process, and execs it. With --path, entries under that namespace\n" +
+			"(e.g. work/jira) overlay the root entries, overriding any matching envVar.\n" +
+			"The env exists only in the child — nothing lands on disk and the parent shell\n" +
+			"sees nothing.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			childArgs := args
@@ -40,44 +42,29 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
-			ids, err := store.ListIDs()
+			pairs, matched, err := resolveEnv(path, wanted, backend)
 			if err != nil {
 				return err
 			}
-			env := os.Environ()
-			injected := 0
-			for _, id := range ids {
-				if wanted != nil && !wanted[id] {
-					continue
-				}
-				m, err := store.LoadAndMigrate(id, backend)
-				if err != nil {
-					return err
-				}
-				if m.EnvVar == "" {
-					continue
-				}
-				secret, err := store.GetSecret(id, backend)
-				if err != nil {
-					return fmt.Errorf("fetch %s: %w", id, err)
-				}
-				safety.Track(secret)
-				env = append(env, m.EnvVar+"="+string(secret))
-				injected++
-			}
-			if wanted != nil && injected < len(wanted) {
-				return fmt.Errorf("--only listed %d ids but only %d matched entries with an envVar", len(wanted), injected)
+			if wanted != nil && matched < len(wanted) {
+				return fmt.Errorf("--only listed %d ids but only %d matched entries with an envVar", len(wanted), matched)
 			}
 
-			path, err := exec.LookPath(childArgs[0])
+			env := os.Environ()
+			for _, p := range pairs {
+				env = append(env, p.EnvVar+"="+string(p.Secret))
+			}
+
+			binPath, err := exec.LookPath(childArgs[0])
 			if err != nil {
 				return err
 			}
 			// Replace the process: the injected env lives only in the child.
-			return syscall.Exec(path, childArgs, env)
+			return syscall.Exec(binPath, childArgs, env)
 		},
 	}
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated ids to inject (default: all with an envVar)")
+	cmd.Flags().StringVar(&path, "path", "", "namespace whose entries overlay the root entries (e.g. work)")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
 }
