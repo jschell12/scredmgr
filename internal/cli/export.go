@@ -7,14 +7,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
 )
 
 func newExportCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "export",
+	var path string
+	cmd := &cobra.Command{
+		Use:   "export [--path ns]",
 		Short: "Print `export` lines (escape hatch — gated behind SCREDMANAGER_ALLOW_EXPORT=1)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -23,26 +21,16 @@ func newExportCmd() *cobra.Command {
 			}
 			fmt.Fprintln(os.Stderr, "WARNING: emitting plaintext secrets. Prefer `scredmanager run -- <cmd>`.")
 
-			ids, err := store.ListIDs()
+			pairs, _, err := resolveEnv(path, nil, backend)
 			if err != nil {
 				return err
 			}
-			for _, id := range ids {
-				m, err := store.LoadAndMigrate(id, backend)
-				if err != nil {
-					return err
-				}
-				if m.EnvVar == "" {
-					continue
-				}
-				secret, err := store.GetSecret(id, backend)
-				if err != nil {
-					return err
-				}
-				safety.Track(secret)
-				fmt.Printf("export %s='%s'\n", m.EnvVar, strings.ReplaceAll(string(secret), "'", `'\''`))
+			for _, p := range pairs {
+				fmt.Printf("export %s='%s'\n", p.EnvVar, strings.ReplaceAll(string(p.Secret), "'", `'\''`))
 			}
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&path, "path", "", "namespace whose entries overlay the root entries (e.g. work)")
+	return cmd
 }

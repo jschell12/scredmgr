@@ -45,3 +45,16 @@ func TestSameHost(t *testing.T) {
 		t.Fatal("missing baseUrl must refuse")
 	}
 }
+
+func TestFindBasenameFallback(t *testing.T) {
+	services := []Service{{ID: "github", EnvVar: "GITHUB_TOKEN"}, {ID: "work/jira", EnvVar: "WORK_JIRA"}}
+	if svc := Find(services, "work/github"); svc == nil || svc.ID != "github" {
+		t.Fatalf("Find(work/github) = %+v, want fallback to github", svc)
+	}
+	if svc := Find(services, "work/jira"); svc == nil || svc.ID != "work/jira" {
+		t.Fatalf("Find(work/jira) = %+v, want exact match", svc)
+	}
+	if svc := Find(services, "nope/missing"); svc != nil {
+		t.Fatalf("Find(nope/missing) = %+v, want nil", svc)
+	}
+}

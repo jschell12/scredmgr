@@ -81,12 +81,12 @@ func TestListIDsExcludesManifest(t *testing.T) {
 }
 
 func TestValidateID(t *testing.T) {
-	for _, ok := range []string{"jira", "custom:JIRA_TOKEN", "a-b_c.d"} {
+	for _, ok := range []string{"jira", "custom:JIRA_TOKEN", "a-b_c.d", "work/jira"} {
 		if err := ValidateID(ok); err != nil {
 			t.Errorf("ValidateID(%q) = %v, want nil", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "../etc/passwd", "a/b", "a b"} {
+	for _, bad := range []string{"", "../etc/passwd", "a//b", "a b"} {
 		if err := ValidateID(bad); err == nil {
 			t.Errorf("ValidateID(%q) = nil, want error", bad)
 		}
