@@ -1,15 +1,102 @@
 # scredmanager
 
 Personal keychain-backed secrets broker for macOS. Replaces a plaintext
-`~/.agentsecrets` dotenv with a single Go binary where **secrets live in the
-macOS Keychain, metadata lives in 0600 JSON, and nothing secret is ever at
-rest in cleartext**.
+`~/.agentsecrets` dotenv with a single Go binary: **secrets live in the macOS
+Keychain, metadata lives in 0600 JSON, and nothing secret is ever at rest in
+cleartext**.
 
 ## Install
 
 ```sh
 make install    # builds and installs to ~/.local/bin/scredmanager
 ```
+
+## Quick start
+
+Migrate off a plaintext dotenv:
+
+```sh
+scredmanager import ~/.agentsecrets   # one keychain entry per export line
+scredmanager ls                       # verify
+scredmanager run -- ./script.sh       # replaces `source ~/.agentsecrets`
+rm -P ~/.agentsecrets
+```
+
+Everyday usage:
+
+```sh
+scredmanager set jira                 # masked prompt (never argv)
+scredmanager get jira | pbcopy        # stdout only — refuses a TTY
+scredmanager status                   # expiry table, ≤7-day warnings
+scredmanager check jira               # live API verify
+scredmanager curl jira /rest/api/2/myself   # auth header injected, argv-safe
+scredmanager login github             # guided token mint (browser + verify)
+```
+
+Run commands with secrets injected as env vars:
+
+```sh
+scredmanager run -- terraform plan
+scredmanager run --path work -- cmd   # overlay work/* over root entries
+scredmanager run --only jira,github -- cmd
+```
+
+Namespaced ids let the same env var map to different accounts:
+
+```sh
+scredmanager set jira --env-var JIRA_TOKEN        # personal (root)
+scredmanager set work/jira --env-var JIRA_TOKEN   # service account
+scredmanager ls --path work                       # only work/* entries
+```
+
+SSH keys (private key stays a file; passphrase goes in the keychain):
+
+```sh
+scredmanager ssh keygen deploy --passphrase-random
+scredmanager ssh show deploy          # public key + fingerprint
+scredmanager ssh add deploy           # register with ssh-agent
+```
+
+Sync with a remote provider (keychain stays canonical):
+
+```sh
+scredmanager sync homelab-vault --push --dry-run
+scredmanager sync homelab-vault --pull
+scredmanager providers check homelab-vault
+```
+
+Daily expiry notifications:
+
+```sh
+scredmanager launchd install    # status --quiet --notify at 09:30
+```
+
+---
+
+## Command reference
+
+| Command | Behavior |
+|---|---|
+| `set <id> [--from-stdin] [--env-var VAR]` | Masked prompt or stdin (never argv). Fails closed if the service's live check rejects the token |
+| `get <id>` | Print secret to stdout — refuses if stdout is a TTY (exit 2) |
+| `rm <id> [--files]` | Delete keychain + metadata (`--files` also deletes ssh key files) |
+| `ls [--path ns]` | List entries |
+| `status [--quiet] [--notify]` | Expiry table with ≤7-day warnings; `--notify` posts a native notification |
+| `check <id>` | Live API verify via the service's `checkPath` |
+| `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
+| `run [--path ns] [--only a,b] -- <cmd…>` | Exec child with secrets as env vars. `--path` overlays a namespace over the root entries |
+| `import <dotenv>` | One keychain entry per `export KEY=value` line |
+| `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
+| `login <id> [--clipboard]` | Guided mint: open `tokenPage`, capture, verify fail-closed, store with expiry |
+| `services` | Emit the manifest |
+| `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 |
+| `ssh keygen <name> --passphrase-random\|--passphrase-prompt\|--no-passphrase` | Generate ed25519 key pair; passphrase in keychain, metadata + rotation reminder in the ledger |
+| `ssh show <name>` | Public key + fingerprint (TTY-safe) |
+| `ssh add <name>` | (Re)register with ssh-agent via stored passphrase |
+| `sync <provider> --push\|--pull [--only a,b] [--dry-run] [--overwrite]` | Copy secrets keychain ↔ remote provider |
+| `providers` / `providers check <name>` | List configured remote providers / probe connectivity and auth |
+
+Every command supports `--json` (`schemaVersion: 1` envelope).
 
 ## Architecture
 
@@ -20,29 +107,41 @@ make install    # builds and installs to ~/.local/bin/scredmanager
   import-then-migrate window and is stripped only after a verified keychain
   round-trip.
 
-## Commands
+## Services manifest
 
-| Command | Behavior |
-|---|---|
-| `set <id> [--from-stdin]` | Masked prompt or stdin (never argv). Fails closed if the service's live check rejects the token |
-| `get <id>` | Print secret to stdout — refuses if stdout is a TTY (exit 2) |
-| `rm <id> [--files]` / `ls` / `status` | Delete both halves (`--files` also deletes ssh key files) / list entries / expiry table with ≤7-day warnings |
-| `check <id>` | Live API verify via the service's `checkPath` |
-| `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
-| `run [--path ns] [--only a,b] -- <cmd…>` | Exec child with secrets as env vars — replaces `source ~/.agentsecrets`. `--path` overlays a namespace over the root entries |
-| `import <dotenv>` | One keychain entry per `export KEY=value` line |
-| `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
-| `services` | Emit the manifest |
-| `login <id>` | Guided mint: open `tokenPage`, capture (masked prompt / `--clipboard` / device-code flow), verify fail-closed, store with expiry |
-| `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 (native notification on ≤7-day expiries) |
-| `ssh keygen <name>` | Generate an ed25519 key pair; passphrase in keychain, metadata + rotation reminder in the ledger |
-| `ssh show <name>` / `ssh add <name>` | Public key + fingerprint (TTY-safe) / (re)register with ssh-agent via stored passphrase |
-| `sync <provider> --push\|--pull` | Copy secrets keychain ↔ remote provider (`--only`, `--dry-run`, `--overwrite`) |
-| `providers` / `providers check <name>` | List configured remote providers / probe connectivity and auth |
+`~/.scredmanager/services.json`:
 
-Every command supports `--json` (`schemaVersion: 1` envelope).
+```json
+[
+  {
+    "id": "jira",
+    "envVar": "JIRA_TOKEN",
+    "baseUrl": "https://example.atlassian.net",
+    "checkPath": "/rest/api/2/myself",
+    "authHeader": "bearer",
+    "expiryDays": 90,
+    "tokenPage": "https://id.atlassian.com/manage-profile/security/api-tokens"
+  }
+]
+```
 
-## Guided login (M6)
+`authHeader` values: `bearer`, `basic:<user>`, `token=`, `private-token`, `header:<Name>`.
+
+## Namespaced paths
+
+Ids may be namespaced with slash-separated path segments (`work/jira`):
+
+- Root entries (no path) are always the base; `--path <ns>` overlays entries
+  directly under that namespace, overriding any base entry with the same
+  `envVar`. Without `--path`, only root entries are injected.
+- `get`, `rm`, `check`, `curl`, `login`, and `sync --only` all accept
+  path-qualified ids.
+- Manifest lookup falls back to the basename: `work/github` inherits the
+  `github` service's `envVar`, live check, and expiry.
+- Metadata lives in nested dirs (`~/.scredmanager/work/jira.json`, 0700);
+  keychain accounts use the full id (`token/work/jira`).
+
+## Guided login
 
 No headless-browser automation — three capture modes:
 
@@ -68,7 +167,7 @@ No headless-browser automation — three capture modes:
 
 Captured tokens are verified against `checkPath` before storage (fail closed).
 
-## SSH keys (M8)
+## SSH keys
 
 `ssh keygen <name>` wraps `ssh-keygen -t ed25519`. **Private keys stay as files
 (default `~/.ssh/id_<name>`) and never enter the keychain** — scredmanager owns
@@ -92,19 +191,11 @@ persistence across reboots.
 `get ssh:<name>` prints the passphrase under the usual non-TTY discipline;
 `rm ssh:<name> --files` also deletes the key pair files.
 
-## Remote providers (M9)
+## Remote providers
 
 The keychain remains the **canonical local store**; remote backends are
 explicit, direction-only sync targets configured in
-`~/.scredmanager/providers.json` (must be 0600):
-
-```json
-{"providers": [
-  {"name": "homelab-vault", "type": "vault",
-   "vault": {"addr": "https://vault.local:8200", "mount": "secret",
-             "pathPrefix": "scredmanager/", "tokenRef": "vault-token"}}
-]}
-```
+`~/.scredmanager/providers.json` (must be 0600).
 
 - `sync <provider> --push` copies local entries to the provider (always
   overwriting remote). `--pull` copies remote entries into the keychain,
@@ -116,15 +207,28 @@ explicit, direction-only sync targets configured in
 - Pulled entries get `syncedFrom`/`syncedAt` metadata plus manifest defaults
   (env var, expiry) when the id matches a service.
 
-**Vault** (`type: vault`) speaks KV v2 over stdlib HTTP — no `vault` CLI
-needed. The token comes from the keychain entry named by `tokenRef` (the
-Vault token is itself a managed, expirable secret) with `VAULT_TOKEN` as
-fallback. For a privately-signed endpoint, point `caCert` at the CA PEM file
-(fallback: `VAULT_CACERT`, same convention as the vault CLI). LIST is
-single-level: nested paths under the prefix are skipped.
+### Vault
 
-**1Password** (`type: 1password`) drives the official `op` CLI (biometric
-auth stays op's problem — run sync from a real terminal, not headless):
+`type: vault` speaks KV v2 over stdlib HTTP — no `vault` CLI needed:
+
+```json
+{"providers": [
+  {"name": "homelab-vault", "type": "vault",
+   "vault": {"addr": "https://vault.local:8200", "mount": "secret",
+             "pathPrefix": "scredmanager/", "tokenRef": "vault-token"}}
+]}
+```
+
+The token comes from the keychain entry named by `tokenRef` (the Vault token
+is itself a managed, expirable secret) with `VAULT_TOKEN` as fallback. For a
+privately-signed endpoint, point `caCert` at the CA PEM file (fallback:
+`VAULT_CACERT`, same convention as the vault CLI). LIST is single-level:
+nested paths under the prefix are skipped.
+
+### 1Password
+
+`type: 1password` drives the official `op` CLI (biometric auth stays op's
+problem — run sync from a real terminal, not headless):
 
 ```json
 {"name": "op-private", "type": "1password",
@@ -137,8 +241,10 @@ Entries are PASSWORD items titled `<itemPrefix><id>`. Reads use `op item get
 (stdin). Updates are delete-then-create because `op item edit` only takes
 values on argv.
 
-**AWS** (`type: aws-sm` for Secrets Manager, `type: aws-ps` for SSM Parameter
-Store) drives the `aws` CLI, inheriting profiles/SSO/region handling:
+### AWS
+
+`type: aws-sm` (Secrets Manager) and `type: aws-ps` (SSM Parameter Store)
+drive the `aws` CLI, inheriting profiles/SSO/region handling:
 
 ```json
 {"name": "aws-sm", "type": "aws-sm",
@@ -152,10 +258,12 @@ payload via `--cli-input-json file:///dev/stdin`. SM updates fall back from
 `create-secret` to `put-secret-value`; PS writes SecureString with
 Overwrite. `Check` is `sts get-caller-identity`.
 
-**LastPass** (`type: lastpass`) is **pull-only**: the upstream `lpass` CLI
-is unmaintained, so it is deliberately kept out of the write path
-(`sync --push` is refused; Put/Delete return read-only errors). Intended for
-break-glass recovery of secrets that already live in LastPass:
+### LastPass
+
+`type: lastpass` is **pull-only**: the upstream `lpass` CLI is unmaintained,
+so it is deliberately kept out of the write path (`sync --push` is refused;
+Put/Delete return read-only errors). Intended for break-glass recovery of
+secrets that already live in LastPass:
 
 ```json
 {"name": "old-lastpass", "type": "lastpass",
@@ -165,60 +273,7 @@ break-glass recovery of secrets that already live in LastPass:
 Entries are `<folder>/<id>`; reads use `lpass show --password` (secret on
 stdout). Log in first with `lpass login <email>`.
 
-## Namespaced paths
-
-Ids may be namespaced with slash-separated path segments, so the same env var
-can map to different accounts:
-
-```sh
-scredmanager set jira --env-var JIRA_TOKEN          # personal (root)
-scredmanager set work/jira --env-var JIRA_TOKEN     # service account
-
-scredmanager run -- cmd               # JIRA_TOKEN = personal
-scredmanager run --path work -- cmd   # root entries + work/* overriding on envVar collision
-scredmanager ls --path work           # only work/* entries
-```
-
-- Root entries (no path) are always the base; `--path <ns>` overlays entries
-  directly under that namespace, overriding any base entry with the same
-  `envVar`. Without `--path`, only root entries are injected (unchanged).
-- `get`, `rm`, `check`, `curl`, `login`, and `sync --only` all accept
-  path-qualified ids.
-- Manifest lookup falls back to the basename: `work/github` inherits the
-  `github` service's `envVar`, live check, and expiry.
-- Metadata lives in nested dirs (`~/.scredmanager/work/jira.json`, 0700);
-  keychain accounts use the full id (`token/work/jira`).
-
-## Services manifest
-
-`~/.scredmanager/services.json`:
-
-```json
-[
-  {
-    "id": "jira",
-    "envVar": "JIRA_TOKEN",
-    "baseUrl": "https://example.atlassian.net",
-    "checkPath": "/rest/api/2/myself",
-    "authHeader": "bearer",
-    "expiryDays": 90,
-    "tokenPage": "https://id.atlassian.com/manage-profile/security/api-tokens"
-  }
-]
-```
-
-`authHeader` values: `bearer`, `basic:<user>`, `token=`, `private-token`, `header:<Name>`.
-
-## Cutover from ~/.agentsecrets
-
-```sh
-scredmanager import ~/.agentsecrets
-scredmanager ls                        # verify
-scredmanager run -- ./script.sh        # replaces `source ~/.agentsecrets`
-rm -P ~/.agentsecrets
-```
-
-## GUI (M7, Tauri v2)
+## GUI (Tauri v2)
 
 One engine (the CLI), two front-ends. **The GUI never owns a secret and never
 touches the keychain** — the Rust backend does nothing but spawn
