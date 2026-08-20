@@ -9,7 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const launchdLabel = "com.jschell12.scredmanager.status"
+const launchdLabel = "com.jschell12.scredmgr.status"
+
+// legacyLaunchdLabel is the pre-rename LaunchAgent label; install unloads and
+// removes its plist so the old job doesn't linger alongside the new one.
+const legacyLaunchdLabel = "com.jschell12.scredmanager.status"
 
 const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -76,6 +80,12 @@ func newLaunchdCmd() *cobra.Command {
 			content := fmt.Sprintf(plistTemplate, launchdLabel, bin, launchdLabel, launchdLabel)
 			if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 				return err
+			}
+			// Clean up the pre-rename agent if present (errors ignored).
+			legacy := filepath.Join(filepath.Dir(p), legacyLaunchdLabel+".plist")
+			if _, err := os.Stat(legacy); err == nil {
+				_ = exec.Command("launchctl", "unload", legacy).Run()
+				_ = os.Remove(legacy)
 			}
 			// Reload: unload any previous copy first (errors ignored — it may
 			// simply not be loaded yet).

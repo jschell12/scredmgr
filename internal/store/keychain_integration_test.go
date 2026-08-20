@@ -12,7 +12,7 @@ import (
 
 func TestKeychainRoundTrip(t *testing.T) {
 	s := NewKeychainStore()
-	const id = "scredmanager-integration-test"
+	const id = "scredmgr-integration-test"
 	secret := []byte("integration-s3cret")
 
 	if err := s.Set(id, secret); err != nil {

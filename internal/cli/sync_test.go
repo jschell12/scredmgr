@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/provider"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/provider"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // fakeProvider is an in-memory provider.Provider for sync tests.

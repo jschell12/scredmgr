@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // startTLSVault serves the fake KV v2 API over TLS with a self-signed cert

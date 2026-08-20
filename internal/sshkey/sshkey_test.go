@@ -80,7 +80,7 @@ func TestKeygenNoPassphrase(t *testing.T) {
 	res, err := Keygen(context.Background(), KeygenOptions{
 		Type:    "ed25519",
 		KeyPath: keyPath,
-		Comment: "test@scredmanager",
+		Comment: "test@scredmgr",
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestKeygenNoPassphrase(t *testing.T) {
 	if !strings.HasPrefix(res.PublicKey, "ssh-ed25519 ") {
 		t.Fatalf("bad public key %q", res.PublicKey)
 	}
-	if !strings.Contains(res.PublicKey, "test@scredmanager") {
+	if !strings.Contains(res.PublicKey, "test@scredmgr") {
 		t.Fatalf("comment missing from %q", res.PublicKey)
 	}
 }

@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/sshkey"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/sshkey"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 const sshIDPrefix = "ssh:"
@@ -19,7 +19,7 @@ const sshIDPrefix = "ssh:"
 func newSSHCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh",
-		Short: "Manage SSH keys — files stay in ~/.ssh; scredmanager owns metadata + passphrase",
+		Short: "Manage SSH keys — files stay in ~/.ssh; scredmgr owns metadata + passphrase",
 	}
 	cmd.AddCommand(newSSHKeygenCmd(), newSSHShowCmd(), newSSHAddCmd())
 	return cmd

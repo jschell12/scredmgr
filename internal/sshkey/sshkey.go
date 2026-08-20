@@ -1,10 +1,10 @@
 // Package sshkey wraps ssh-keygen and ssh-add. Private keys stay as files
-// (typically under ~/.ssh); scredmanager owns only the metadata ledger and,
+// (typically under ~/.ssh); scredmgr owns only the metadata ledger and,
 // optionally, the passphrase in the keychain.
 //
 // Passphrases never touch argv or the environment. ssh-keygen and ssh-add are
 // driven via SSH_ASKPASS + SSH_ASKPASS_REQUIRE=force (OpenSSH >= 8.4), with
-// scredmanager re-exec'ing itself as the askpass helper: only the entry id
+// scredmgr re-exec'ing itself as the askpass helper: only the entry id
 // rides in the environment; the passphrase travels keychain -> helper stdout
 // -> the ssh tool's own pipe.
 package sshkey
@@ -21,12 +21,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jschell12/scredmanager/internal/safety"
+	"github.com/jschell12/scredmgr/internal/safety"
 )
 
 // AskpassIDEnv names the environment variable carrying the entry id (never the
 // secret) to the re-exec'd askpass helper.
-const AskpassIDEnv = "SCREDMANAGER_ASKPASS_ID"
+const AskpassIDEnv = "SCREDMGR_ASKPASS_ID"
 
 // execCommand is swapped out in tests.
 var execCommand = exec.CommandContext

@@ -1,4 +1,4 @@
-// Package cli implements the scredmanager command surface.
+// Package cli implements the scredmgr command surface.
 package cli
 
 import (
@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // exit codes
@@ -38,9 +38,9 @@ func SetStore(s store.Store) { backend = s }
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "scredmanager",
+		Use:           "scredmgr",
 		Short:         "Personal keychain-backed secrets broker",
-		Long:          "scredmanager stores secrets in the macOS Keychain and metadata in 0600 JSON.\nConsumers fetch on demand ($(scredmanager get …)) or never see the token at all\n(scredmanager curl, scredmanager run).",
+		Long:          "scredmgr stores secrets in the macOS Keychain and metadata in 0600 JSON.\nConsumers fetch on demand ($(scredmgr get …)) or never see the token at all\n(scredmgr curl, scredmgr run).",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -70,6 +70,11 @@ func newRootCmd() *cobra.Command {
 // Execute runs the CLI and returns the process exit code. All error output
 // passes through the redactor so secrets never reach stderr.
 func Execute() int {
+	// One-time copy of entries from the pre-rename "scredmanager" keychain
+	// service. Best effort: a failure must not block normal commands.
+	if err := store.MigrateLegacy(); err != nil {
+		fmt.Fprintln(os.Stderr, "scredmgr: legacy keychain migration: "+safety.Redact(err.Error()))
+	}
 	err := newRootCmd().Execute()
 	if err == nil {
 		return exitOK
@@ -81,7 +86,7 @@ func Execute() int {
 	if jsonOut {
 		emitError(err)
 	} else {
-		fmt.Fprintln(os.Stderr, "scredmanager: "+safety.Redact(err.Error()))
+		fmt.Fprintln(os.Stderr, "scredmgr: "+safety.Redact(err.Error()))
 	}
 	return code
 }

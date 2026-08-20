@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/jschell12/scredmanager/internal/cli"
+	"github.com/jschell12/scredmgr/internal/cli"
 )
 
 func main() {

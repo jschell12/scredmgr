@@ -1,5 +1,5 @@
-// scredmanager GUI frontend. Talks only to the whitelisted Rust commands,
-// which only spawn `scredmanager … --json`. No secret ever reaches this
+// scredmgr GUI frontend. Talks only to the whitelisted Rust commands,
+// which only spawn `scredmgr … --json`. No secret ever reaches this
 // process: the CLI's get/run paths are not exposed here at all.
 "use strict";
 
@@ -125,7 +125,7 @@ async function refresh() {
     const svcList = $("services");
     svcList.replaceChildren();
     if (!services || services.length === 0) {
-      svcList.appendChild(el("div", "empty", "No services — edit ~/.scredmanager/services.json"));
+      svcList.appendChild(el("div", "empty", "No services — edit ~/.scredmgr/services.json"));
     } else {
       for (const svc of services) svcList.appendChild(serviceRow(svc, byId[svc.id]));
     }

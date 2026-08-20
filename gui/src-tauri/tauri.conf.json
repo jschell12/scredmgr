@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "scredmanager",
+  "productName": "scredmgr",
   "version": "0.1.0",
-  "identifier": "com.jschell12.scredmanager.gui",
+  "identifier": "com.jschell12.scredmgr.gui",
   "build": {
     "frontendDist": "../dist"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "scredmanager",
+        "title": "scredmgr",
         "width": 780,
         "height": 620,
         "minWidth": 560,

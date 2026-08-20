@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // fakeVaultServer implements enough of the KV v2 API for the provider.

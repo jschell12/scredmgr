@@ -18,7 +18,7 @@ const (
 )
 
 // Meta is the non-secret metadata for one entry, stored as
-// ~/.scredmanager/<id>.json with mode 0600.
+// ~/.scredmgr/<id>.json with mode 0600.
 type Meta struct {
 	Label     string `json:"label,omitempty"`
 	EnvVar    string `json:"envVar,omitempty"`
@@ -50,16 +50,29 @@ type Meta struct {
 	Storage string `json:"_storage"`
 }
 
-// HomeDir returns the scredmanager data directory, creating it 0700 if needed.
-// SCREDMANAGER_HOME overrides the default ~/.scredmanager (used in tests).
+// HomeDir returns the scredmgr data directory, creating it 0700 if needed.
+// SCREDMGR_HOME overrides the default ~/.scredmgr (used in tests);
+// SCREDMANAGER_HOME is honored as a legacy fallback. When the default
+// ~/.scredmgr does not exist but the pre-rename ~/.scredmanager does, the
+// legacy directory is moved into place (one-time migration).
 func HomeDir() (string, error) {
-	dir := os.Getenv("SCREDMANAGER_HOME")
+	dir := os.Getenv("SCREDMGR_HOME")
+	if dir == "" {
+		dir = os.Getenv("SCREDMANAGER_HOME") // legacy env var
+	}
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		dir = filepath.Join(home, ".scredmanager")
+		dir = filepath.Join(home, ".scredmgr")
+		legacy := filepath.Join(home, ".scredmanager")
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			if _, lerr := os.Stat(legacy); lerr == nil {
+				// Best effort: on failure fall through and start fresh.
+				_ = os.Rename(legacy, dir)
+			}
+		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err

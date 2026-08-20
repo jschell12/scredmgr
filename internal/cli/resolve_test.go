@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 func seedEntry(t *testing.T, s store.Store, id, envVar, secret string) {
@@ -25,7 +25,7 @@ func pairsToMap(pairs []envPair) map[string]string {
 }
 
 func TestResolveEnvRootOnly(t *testing.T) {
-	t.Setenv("SCREDMANAGER_HOME", t.TempDir())
+	t.Setenv("SCREDMGR_HOME", t.TempDir())
 	s := store.NewFakeStore()
 	seedEntry(t, s, "jira", "JIRA_TOKEN", "personal")
 	seedEntry(t, s, "work/jira", "JIRA_TOKEN", "svc-account")
@@ -41,7 +41,7 @@ func TestResolveEnvRootOnly(t *testing.T) {
 }
 
 func TestResolveEnvOverlay(t *testing.T) {
-	t.Setenv("SCREDMANAGER_HOME", t.TempDir())
+	t.Setenv("SCREDMGR_HOME", t.TempDir())
 	s := store.NewFakeStore()
 	seedEntry(t, s, "jira", "JIRA_TOKEN", "personal")
 	seedEntry(t, s, "github", "GITHUB_TOKEN", "gh-personal")
@@ -71,7 +71,7 @@ func TestResolveEnvOverlay(t *testing.T) {
 }
 
 func TestResolveEnvOnlyFilter(t *testing.T) {
-	t.Setenv("SCREDMANAGER_HOME", t.TempDir())
+	t.Setenv("SCREDMGR_HOME", t.TempDir())
 	s := store.NewFakeStore()
 	seedEntry(t, s, "jira", "JIRA_TOKEN", "personal")
 	seedEntry(t, s, "github", "GITHUB_TOKEN", "gh-personal")
@@ -91,7 +91,7 @@ func TestResolveEnvOnlyFilter(t *testing.T) {
 }
 
 func TestResolveEnvRejectsBadPath(t *testing.T) {
-	t.Setenv("SCREDMANAGER_HOME", t.TempDir())
+	t.Setenv("SCREDMGR_HOME", t.TempDir())
 	if _, _, err := resolveEnv("../etc", nil, store.NewFakeStore()); err == nil {
 		t.Fatal("resolveEnv accepted a traversal path")
 	}

@@ -1,5 +1,5 @@
 // Package manifest handles the user-editable services manifest
-// (~/.scredmanager/services.json) and auth-header construction.
+// (~/.scredmgr/services.json) and auth-header construction.
 package manifest
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // Service describes one named service in services.json.

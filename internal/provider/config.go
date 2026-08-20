@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
-// Config is one entry in ~/.scredmanager/providers.json.
+// Config is one entry in ~/.scredmgr/providers.json.
 type Config struct {
 	Name string `json:"name"`
 	Type string `json:"type"` // vault | 1password | aws-sm | aws-ps | lastpass
@@ -24,8 +24,8 @@ type Config struct {
 type VaultCfg struct {
 	Addr       string `json:"addr"`
 	Mount      string `json:"mount"`                // KV v2 mount, e.g. "secret"
-	PathPrefix string `json:"pathPrefix,omitempty"` // e.g. "scredmanager/"
-	// TokenRef names a scredmanager keychain entry holding the Vault token.
+	PathPrefix string `json:"pathPrefix,omitempty"` // e.g. "scredmgr/"
+	// TokenRef names a scredmgr keychain entry holding the Vault token.
 	// Fallback: VAULT_TOKEN environment variable.
 	TokenRef string `json:"tokenRef,omitempty"`
 	// CACert is a PEM file with the CA for a privately-signed Vault endpoint.
@@ -56,7 +56,7 @@ type configFile struct {
 	Providers []Config `json:"providers"`
 }
 
-// LoadConfigs reads ~/.scredmanager/providers.json. A missing file yields an
+// LoadConfigs reads ~/.scredmgr/providers.json. A missing file yields an
 // empty list; a group/world-readable file is refused.
 func LoadConfigs() ([]Config, error) {
 	dir, err := store.HomeDir()
@@ -93,7 +93,7 @@ func FindConfig(configs []Config, name string) (*Config, error) {
 		}
 	}
 	if len(configs) == 0 {
-		return nil, fmt.Errorf("no providers configured (create ~/.scredmanager/providers.json)")
+		return nil, fmt.Errorf("no providers configured (create ~/.scredmgr/providers.json)")
 	}
 	names := make([]string, len(configs))
 	for i, c := range configs {

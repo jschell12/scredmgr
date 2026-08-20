@@ -7,13 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/provider"
+	"github.com/jschell12/scredmgr/internal/provider"
 )
 
 func newProvidersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "providers",
-		Short: "List configured remote providers (~/.scredmanager/providers.json)",
+		Short: "List configured remote providers (~/.scredmgr/providers.json)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configs, err := provider.LoadConfigs()

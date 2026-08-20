@@ -10,7 +10,7 @@ import (
 // read cleanly with zero values for the new fields.
 func TestReadMetaLegacyFormat(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 	legacy := `{"label":"old","envVar":"OLD_TOKEN","createdAt":"2026-01-01T00:00:00Z","_storage":"keychain"}` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "old.json"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestReadMetaLegacyFormat(t *testing.T) {
 
 func TestMetaRoundTripNewFields(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 	in := &Meta{
 		Kind:        "ssh",
 		Fingerprint: "SHA256:abc",

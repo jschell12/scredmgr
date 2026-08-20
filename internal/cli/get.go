@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 func newGetCmd() *cobra.Command {
@@ -22,7 +22,7 @@ func newGetCmd() *cobra.Command {
 			if safety.IsTTY(os.Stdout) {
 				return &exitCodeError{
 					code: exitTTY,
-					err:  errors.New("refusing to print a secret to a terminal; use $(scredmanager get " + id + ") or pipe it"),
+					err:  errors.New("refusing to print a secret to a terminal; use $(scredmgr get " + id + ") or pipe it"),
 				}
 			}
 			secret, err := store.GetSecret(id, backend)

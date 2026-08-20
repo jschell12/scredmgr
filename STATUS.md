@@ -7,9 +7,9 @@
   - `run --path <ns> -- cmd` / `export --path <ns>`: namespace entries overlay root entries, overriding on envVar collision; no `--path` = root only (back-compat).
   - `ls --path <ns>` filter; `get`/`rm`/`check`/`curl`/`sync --only` accept path-qualified ids.
   - Manifest lookup falls back to basename (`work/github` inherits the `github` service).
-  - Metadata nests under `~/.scredmanager/<ns>/` (0700, empty dirs pruned); keychain account = full id (`token/work/jira`); `.`/`..`/empty segments rejected.
+  - Metadata nests under `~/.scredmgr/<ns>/` (0700, empty dirs pruned); keychain account = full id (`token/work/jira`); `.`/`..`/empty segments rejected.
   - New tests: path validation, nested meta round-trip, recursive ListIDs, dir pruning, overlay resolution, manifest fallback. Full suite green.
-- Rebuilt and installed to `~/.local/bin/scredmanager` (stable codesign identity — no keychain re-prompts).
+- Rebuilt and installed to `~/.local/bin/scredmgr` (stable codesign identity — no keychain re-prompts).
 - **README restructure**: quick-start examples up top, full command/flag reference and provider docs at bottom; milestone (M6–M9) labels removed.
 
 ### In progress
