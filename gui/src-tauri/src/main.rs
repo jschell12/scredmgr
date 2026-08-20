@@ -1,7 +1,7 @@
-// scredmanager GUI — architecture rule (from the kickoff brief): the GUI
+// scredmgr GUI — architecture rule (from the kickoff brief): the GUI
 // never owns a secret and never touches the keychain directly. One engine
 // (the CLI), two front-ends. This backend does nothing but spawn
-// `scredmanager <cmd> --json` and relay the envelope to the WebView.
+// `scredmgr <cmd> --json` and relay the envelope to the WebView.
 //
 // Deliberately NO dependency on Security.framework, keychain crates, or any
 // secret-handling code. Audit `cargo tree` to confirm.
@@ -12,32 +12,32 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Locate the scredmanager CLI. Order: $SCREDMANAGER_BIN, ~/.local/bin,
+/// Locate the scredmgr CLI. Order: $SCREDMGR_BIN, ~/.local/bin,
 /// Homebrew paths, then $PATH.
 fn resolve_bin() -> Result<PathBuf, String> {
-    if let Ok(p) = std::env::var("SCREDMANAGER_BIN") {
+    if let Ok(p) = std::env::var("SCREDMGR_BIN") {
         let pb = PathBuf::from(p);
         if pb.is_file() {
             return Ok(pb);
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        let pb = PathBuf::from(home).join(".local/bin/scredmanager");
+        let pb = PathBuf::from(home).join(".local/bin/scredmgr");
         if pb.is_file() {
             return Ok(pb);
         }
     }
-    for p in ["/opt/homebrew/bin/scredmanager", "/usr/local/bin/scredmanager"] {
+    for p in ["/opt/homebrew/bin/scredmgr", "/usr/local/bin/scredmgr"] {
         let pb = PathBuf::from(p);
         if pb.is_file() {
             return Ok(pb);
         }
     }
     // Fall back to $PATH resolution by the OS.
-    if Command::new("scredmanager").arg("--help").output().is_ok() {
-        return Ok(PathBuf::from("scredmanager"));
+    if Command::new("scredmgr").arg("--help").output().is_ok() {
+        return Ok(PathBuf::from("scredmgr"));
     }
-    Err("scredmanager CLI not found — install it with `make install` or set SCREDMANAGER_BIN".into())
+    Err("scredmgr CLI not found — install it with `make install` or set SCREDMGR_BIN".into())
 }
 
 /// Reject arguments that could be misparsed as flags or contain unexpected
@@ -160,5 +160,5 @@ fn main() {
             gui_notify
         ])
         .run(tauri::generate_context!())
-        .expect("error while running scredmanager GUI");
+        .expect("error while running scredmgr GUI");
 }

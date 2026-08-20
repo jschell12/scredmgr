@@ -1,4 +1,4 @@
-module github.com/jschell12/scredmanager
+module github.com/jschell12/scredmgr
 
 go 1.26.1
 

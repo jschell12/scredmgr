@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/manifest"
+	"github.com/jschell12/scredmgr/internal/manifest"
 )
 
 func newServicesCmd() *cobra.Command {
@@ -25,7 +25,7 @@ func newServicesCmd() *cobra.Command {
 				return nil
 			}
 			if len(services) == 0 {
-				fmt.Println("no services defined (edit ~/.scredmanager/services.json)")
+				fmt.Println("no services defined (edit ~/.scredmgr/services.json)")
 				return nil
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)

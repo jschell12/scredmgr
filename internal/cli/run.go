@@ -31,7 +31,7 @@ func newRunCmd() *cobra.Command {
 				childArgs = args[dash:]
 			}
 			if len(childArgs) == 0 {
-				return errors.New("no command given; usage: scredmanager run -- <cmd…>")
+				return errors.New("no command given; usage: scredmgr run -- <cmd…>")
 			}
 
 			var wanted map[string]bool

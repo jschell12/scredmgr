@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/manifest"
-	"github.com/jschell12/scredmanager/internal/provider"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/manifest"
+	"github.com/jschell12/scredmgr/internal/provider"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // openProvider is swapped out in tests.

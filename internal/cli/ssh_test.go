@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 func withTestEnv(t *testing.T) (*store.FakeStore, string) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 	fake := store.NewFakeStore()
 	prev := backend
 	SetStore(fake)

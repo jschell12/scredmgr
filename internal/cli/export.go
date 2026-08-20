@@ -13,13 +13,14 @@ func newExportCmd() *cobra.Command {
 	var path string
 	cmd := &cobra.Command{
 		Use:   "export [--path ns]",
-		Short: "Print `export` lines (escape hatch — gated behind SCREDMANAGER_ALLOW_EXPORT=1)",
+		Short: "Print `export` lines (escape hatch — gated behind SCREDMGR_ALLOW_EXPORT=1)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if os.Getenv("SCREDMANAGER_ALLOW_EXPORT") != "1" {
-				return errors.New("export writes plaintext secrets to stdout; set SCREDMANAGER_ALLOW_EXPORT=1 if you really mean it (prefer `scredmanager run`)")
+			// SCREDMANAGER_ALLOW_EXPORT honored as legacy fallback.
+			if os.Getenv("SCREDMGR_ALLOW_EXPORT") != "1" && os.Getenv("SCREDMANAGER_ALLOW_EXPORT") != "1" {
+				return errors.New("export writes plaintext secrets to stdout; set SCREDMGR_ALLOW_EXPORT=1 if you really mean it (prefer `scredmgr run`)")
 			}
-			fmt.Fprintln(os.Stderr, "WARNING: emitting plaintext secrets. Prefer `scredmanager run -- <cmd>`.")
+			fmt.Fprintln(os.Stderr, "WARNING: emitting plaintext secrets. Prefer `scredmgr run -- <cmd>`.")
 
 			pairs, _, err := resolveEnv(path, nil, backend)
 			if err != nil {

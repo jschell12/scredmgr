@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jschell12/scredmanager/internal/safety"
+	"github.com/jschell12/scredmgr/internal/safety"
 )
 
 // AWSSM stores secrets in AWS Secrets Manager as "<prefix><id>".

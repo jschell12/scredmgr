@@ -1,7 +1,7 @@
 // Package store provides the secret storage backends and metadata handling.
 //
 // Secrets live in the macOS Keychain; metadata lives in 0600 JSON files under
-// the scredmanager home directory. Nothing secret is ever at rest in cleartext
+// the scredmgr home directory. Nothing secret is ever at rest in cleartext
 // (outside the import-then-migrate window, see migrate.go).
 package store
 

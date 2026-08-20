@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // Vault talks to a HashiCorp Vault KV v2 mount via the stdlib HTTP client.
@@ -28,7 +28,7 @@ type Vault struct {
 }
 
 // NewVault returns a Vault provider. The token is resolved lazily on first use
-// from cfg.TokenRef (a scredmanager keychain entry) or $VAULT_TOKEN. A private
+// from cfg.TokenRef (a scredmgr keychain entry) or $VAULT_TOKEN. A private
 // CA for the Vault endpoint comes from cfg.CACert or $VAULT_CACERT (a PEM
 // file, same convention as the vault CLI).
 func NewVault(name string, cfg VaultCfg, secrets store.Store) *Vault {

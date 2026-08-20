@@ -24,7 +24,7 @@ func Verify(svc *Service, token string) error {
 		return err
 	}
 	req.Header.Set(name, value)
-	req.Header.Set("User-Agent", "scredmanager")
+	req.Header.Set("User-Agent", "scredmgr")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -39,7 +39,7 @@ func Verify(svc *Service, token string) error {
 }
 
 // SameHost reports whether rawURL's host matches the service's baseUrl host.
-// Used by `scredmanager curl` as a hard allowlist.
+// Used by `scredmgr curl` as a hard allowlist.
 func SameHost(svc *Service, rawURL string) (bool, error) {
 	if svc.BaseURL == "" {
 		return false, fmt.Errorf("service %q has no baseUrl; refusing to inject credentials", svc.ID)

@@ -53,7 +53,7 @@ func newStatusCmd() *cobra.Command {
 			}
 
 			if notify && warnings > 0 {
-				if err := postNotification("scredmanager", strings.Join(warnLines, ", ")); err != nil {
+				if err := postNotification("scredmgr", strings.Join(warnLines, ", ")); err != nil {
 					fmt.Fprintf(os.Stderr, "notification failed: %v\n", err)
 				}
 			}

@@ -12,7 +12,10 @@ func NewKeychainStore() Store {
 
 type unsupportedStore struct{}
 
-var errUnsupported = errors.New("scredmanager: keychain backend is only available on macOS")
+var errUnsupported = errors.New("scredmgr: keychain backend is only available on macOS")
+
+// MigrateLegacy is a no-op off macOS.
+func MigrateLegacy() error { return nil }
 
 func (*unsupportedStore) Set(string, []byte) error    { return errUnsupported }
 func (*unsupportedStore) Get(string) ([]byte, error)  { return nil, errUnsupported }

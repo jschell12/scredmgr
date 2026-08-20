@@ -11,7 +11,7 @@ import (
 func withTempHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 	return dir
 }
 

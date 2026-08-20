@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jschell12/scredmanager/internal/manifest"
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/manifest"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 func newCheckCmd() *cobra.Command {

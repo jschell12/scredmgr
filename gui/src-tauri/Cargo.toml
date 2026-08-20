@@ -1,8 +1,8 @@
 [package]
-name = "scredmanager-gui"
+name = "scredmgr-gui"
 version = "0.1.0"
 edition = "2021"
-description = "GUI front-end for scredmanager — spawns the CLI, never touches the keychain"
+description = "GUI front-end for scredmgr — spawns the CLI, never touches the keychain"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

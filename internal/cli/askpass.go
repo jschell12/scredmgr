@@ -5,12 +5,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/sshkey"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/sshkey"
 )
 
 // MaybeAskpass handles the SSH_ASKPASS re-exec: when ssh-keygen/ssh-add call
-// this binary back as their askpass helper, SCREDMANAGER_ASKPASS_ID carries the
+// this binary back as their askpass helper, SCREDMGR_ASKPASS_ID carries the
 // entry id (never the secret). The passphrase is read from the keychain and
 // written to stdout — the pipe owned by the calling ssh tool.
 //
@@ -27,7 +27,7 @@ func MaybeAskpass() (int, bool) {
 func askpass(id string, w io.Writer) int {
 	secret, err := backend.Get(id)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "scredmanager askpass: "+safety.Redact(err.Error()))
+		fmt.Fprintln(os.Stderr, "scredmgr askpass: "+safety.Redact(err.Error()))
 		return exitError
 	}
 	safety.Track(secret)

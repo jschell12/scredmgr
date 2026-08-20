@@ -1,10 +1,10 @@
-BINARY := scredmanager
+BINARY := scredmgr
 PREFIX ?= $(HOME)/.local
 # Stable code signature so Keychain "Always Allow" ACL grants survive rebuilds.
 # Ad-hoc (linker) signatures change every build, which resets item ACLs and
 # causes a password prompt per secret. Override with CODESIGN_ID=- for ad-hoc.
 CODESIGN_ID ?= Apple Development
-BUNDLE_ID := com.jschell12.scredmanager
+BUNDLE_ID := com.jschell12.scredmgr
 
 .PHONY: build test integration vet install clean gui gui-run gui-audit
 
@@ -22,6 +22,8 @@ integration:
 install: build
 	mkdir -p $(PREFIX)/bin
 	install -m 0755 bin/$(BINARY) $(PREFIX)/bin/$(BINARY)
+	# Compat shim: consumers that still call `scredmanager` keep working.
+	ln -sf $(BINARY) $(PREFIX)/bin/scredmanager
 
 gui:
 	cd gui/src-tauri && cargo build --release

@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/jschell12/scredmanager/internal/safety"
+	"github.com/jschell12/scredmgr/internal/safety"
 )
 
 // Runner executes an external CLI (op, aws, lpass). Secret values may travel

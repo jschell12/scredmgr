@@ -8,7 +8,7 @@ import (
 )
 
 func newTestLP(f *fakeRunner) *Lastpass {
-	return NewLastpass("lp-test", LastpassCfg{Folder: "scredmanager"}, f.run)
+	return NewLastpass("lp-test", LastpassCfg{Folder: "scredmgr"}, f.run)
 }
 
 func TestLastpassReadOnly(t *testing.T) {
@@ -31,7 +31,7 @@ func TestLastpassGet(t *testing.T) {
 		t.Fatalf("get: %v %q", err, got)
 	}
 	joined := strings.Join(f.calls[0].args, " ")
-	if !strings.Contains(joined, "show --password scredmanager/github") {
+	if !strings.Contains(joined, "show --password scredmgr/github") {
 		t.Fatalf("argv: %v", f.calls[0].args)
 	}
 }
@@ -45,7 +45,7 @@ func TestLastpassGetEmpty(t *testing.T) {
 
 func TestLastpassList(t *testing.T) {
 	f := &fakeRunner{stdout: map[string][]byte{"ls": []byte(
-		"scredmanager/github\nscredmanager/vault-unseal\nscredmanager\nother/entry\n\n")}}
+		"scredmgr/github\nscredmgr/vault-unseal\nscredmgr\nother/entry\n\n")}}
 	ids, err := newTestLP(f).List(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestLastpassList(t *testing.T) {
 		t.Fatalf("ids: %v", ids)
 	}
 	joined := strings.Join(f.calls[0].args, " ")
-	if !strings.Contains(joined, "ls --format %an scredmanager") {
+	if !strings.Contains(joined, "ls --format %an scredmgr") {
 		t.Fatalf("argv: %v", f.calls[0].args)
 	}
 }

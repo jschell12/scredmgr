@@ -1,4 +1,4 @@
-# scredmanager
+# scredmgr
 
 Personal keychain-backed secrets broker for macOS. Replaces a plaintext
 `~/.agentsecrets` dotenv with a single Go binary: **secrets live in the macOS
@@ -8,7 +8,7 @@ cleartext**.
 ## Install
 
 ```sh
-make install    # builds and installs to ~/.local/bin/scredmanager
+make install    # builds and installs to ~/.local/bin/scredmgr
 ```
 
 ## Quick start
@@ -16,59 +16,59 @@ make install    # builds and installs to ~/.local/bin/scredmanager
 Migrate off a plaintext dotenv:
 
 ```sh
-scredmanager import ~/.agentsecrets   # one keychain entry per export line
-scredmanager ls                       # verify
-scredmanager run -- ./script.sh       # replaces `source ~/.agentsecrets`
+scredmgr import ~/.agentsecrets   # one keychain entry per export line
+scredmgr ls                       # verify
+scredmgr run -- ./script.sh       # replaces `source ~/.agentsecrets`
 rm -P ~/.agentsecrets
 ```
 
 Everyday usage:
 
 ```sh
-scredmanager set jira                 # masked prompt (never argv)
-scredmanager get jira | pbcopy        # stdout only — refuses a TTY
-scredmanager status                   # expiry table, ≤7-day warnings
-scredmanager check jira               # live API verify
-scredmanager curl jira /rest/api/2/myself   # auth header injected, argv-safe
-scredmanager login github             # guided token mint (browser + verify)
+scredmgr set jira                 # masked prompt (never argv)
+scredmgr get jira | pbcopy        # stdout only — refuses a TTY
+scredmgr status                   # expiry table, ≤7-day warnings
+scredmgr check jira               # live API verify
+scredmgr curl jira /rest/api/2/myself   # auth header injected, argv-safe
+scredmgr login github             # guided token mint (browser + verify)
 ```
 
 Run commands with secrets injected as env vars:
 
 ```sh
-scredmanager run -- terraform plan
-scredmanager run --path work -- cmd   # overlay work/* over root entries
-scredmanager run --only jira,github -- cmd
+scredmgr run -- terraform plan
+scredmgr run --path work -- cmd   # overlay work/* over root entries
+scredmgr run --only jira,github -- cmd
 ```
 
 Namespaced ids let the same env var map to different accounts:
 
 ```sh
-scredmanager set jira --env-var JIRA_TOKEN        # personal (root)
-scredmanager set work/jira --env-var JIRA_TOKEN   # service account
-scredmanager ls --path work                       # only work/* entries
+scredmgr set jira --env-var JIRA_TOKEN        # personal (root)
+scredmgr set work/jira --env-var JIRA_TOKEN   # service account
+scredmgr ls --path work                       # only work/* entries
 ```
 
 SSH keys (private key stays a file; passphrase goes in the keychain):
 
 ```sh
-scredmanager ssh keygen deploy --passphrase-random
-scredmanager ssh show deploy          # public key + fingerprint
-scredmanager ssh add deploy           # register with ssh-agent
+scredmgr ssh keygen deploy --passphrase-random
+scredmgr ssh show deploy          # public key + fingerprint
+scredmgr ssh add deploy           # register with ssh-agent
 ```
 
 Sync with a remote provider (keychain stays canonical):
 
 ```sh
-scredmanager sync homelab-vault --push --dry-run
-scredmanager sync homelab-vault --pull
-scredmanager providers check homelab-vault
+scredmgr sync homelab-vault --push --dry-run
+scredmgr sync homelab-vault --pull
+scredmgr providers check homelab-vault
 ```
 
 Daily expiry notifications:
 
 ```sh
-scredmanager launchd install    # status --quiet --notify at 09:30
+scredmgr launchd install    # status --quiet --notify at 09:30
 ```
 
 ---
@@ -86,7 +86,7 @@ scredmanager launchd install    # status --quiet --notify at 09:30
 | `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
 | `run [--path ns] [--only a,b] -- <cmd…>` | Exec child with secrets as env vars. `--path` overlays a namespace over the root entries |
 | `import <dotenv>` | One keychain entry per `export KEY=value` line |
-| `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMANAGER_ALLOW_EXPORT=1` |
+| `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMGR_ALLOW_EXPORT=1` |
 | `login <id> [--clipboard]` | Guided mint: open `tokenPage`, capture, verify fail-closed, store with expiry |
 | `services` | Emit the manifest |
 | `launchd install` | LaunchAgent running `status --quiet --notify` daily at 09:30 |
@@ -100,16 +100,25 @@ Every command supports `--json` (`schemaVersion: 1` envelope).
 
 ## Architecture
 
-- **Secret** → Keychain generic password: service `scredmanager`, account `token/<id>`
-- **Metadata** → `~/.scredmanager/<id>.json`, mode 0600, atomic writes
+- **Secret** → Keychain generic password: service `scredmgr`, account `token/<id>`
+- **Metadata** → `~/.scredmgr/<id>.json`, mode 0600, atomic writes
 - `_storage` provenance marker (`keychain | file | mixed`) tells delete/migrate
   where the authoritative copy is. Plaintext in JSON exists only during the
   import-then-migrate window and is stripped only after a verified keychain
   round-trip.
 
+### Renamed from `scredmanager`
+
+The tool was renamed `scredmanager` → `scredmgr`. On first run the CLI
+copies keychain entries from the old `scredmanager` service into `scredmgr`
+(old entries are kept as backup; delete `~/.scredmgr/.migrated-keychain-scredmanager`
+to retry) and moves `~/.scredmanager/` → `~/.scredmgr/`. Legacy env vars
+(`SCREDMANAGER_HOME`, `SCREDMANAGER_ALLOW_EXPORT`) are honored as fallbacks,
+and `make install` leaves a `scredmanager` symlink for old callers.
+
 ## Services manifest
 
-`~/.scredmanager/services.json`:
+`~/.scredmgr/services.json`:
 
 ```json
 [
@@ -138,7 +147,7 @@ Ids may be namespaced with slash-separated path segments (`work/jira`):
   path-qualified ids.
 - Manifest lookup falls back to the basename: `work/github` inherits the
   `github` service's `envVar`, live check, and expiry.
-- Metadata lives in nested dirs (`~/.scredmanager/work/jira.json`, 0700);
+- Metadata lives in nested dirs (`~/.scredmgr/work/jira.json`, 0700);
   keychain accounts use the full id (`token/work/jira`).
 
 ## Guided login
@@ -170,7 +179,7 @@ Captured tokens are verified against `checkPath` before storage (fail closed).
 ## SSH keys
 
 `ssh keygen <name>` wraps `ssh-keygen -t ed25519`. **Private keys stay as files
-(default `~/.ssh/id_<name>`) and never enter the keychain** — scredmanager owns
+(default `~/.ssh/id_<name>`) and never enter the keychain** — scredmgr owns
 the ledger: metadata under id `ssh:<name>` (fingerprint, key path, rotation
 expiry — default 365 days, surfaced by `ls`/`status` and the daily launchd
 notification) and, optionally, the passphrase in the keychain.
@@ -180,7 +189,7 @@ bytes, stored in keychain — recommended), `--passphrase-prompt` (masked
 prompt, stored), or `--no-passphrase` (explicit opt-out).
 
 **How the passphrase reaches ssh-keygen without leaking:** `-N <pass>` would
-put it on argv (visible in `ps`), so scredmanager instead sets
+put it on argv (visible in `ps`), so scredmgr instead sets
 `SSH_ASKPASS=<itself>` + `SSH_ASKPASS_REQUIRE=force` (OpenSSH ≥ 8.4) and
 re-execs itself as the askpass helper. Only the entry **id** rides in the
 environment; the passphrase travels keychain → helper stdout → ssh-keygen's
@@ -195,7 +204,7 @@ persistence across reboots.
 
 The keychain remains the **canonical local store**; remote backends are
 explicit, direction-only sync targets configured in
-`~/.scredmanager/providers.json` (must be 0600).
+`~/.scredmgr/providers.json` (must be 0600).
 
 - `sync <provider> --push` copies local entries to the provider (always
   overwriting remote). `--pull` copies remote entries into the keychain,
@@ -215,7 +224,7 @@ explicit, direction-only sync targets configured in
 {"providers": [
   {"name": "homelab-vault", "type": "vault",
    "vault": {"addr": "https://vault.local:8200", "mount": "secret",
-             "pathPrefix": "scredmanager/", "tokenRef": "vault-token"}}
+             "pathPrefix": "scredmgr/", "tokenRef": "vault-token"}}
 ]}
 ```
 
@@ -233,7 +242,7 @@ problem — run sync from a real terminal, not headless):
 ```json
 {"name": "op-private", "type": "1password",
  "op": {"vault": "Private", "account": "my.1password.com",
-        "itemPrefix": "scredmanager/"}}
+        "itemPrefix": "scredmgr/"}}
 ```
 
 Entries are PASSWORD items titled `<itemPrefix><id>`. Reads use `op item get
@@ -248,9 +257,9 @@ drive the `aws` CLI, inheriting profiles/SSO/region handling:
 
 ```json
 {"name": "aws-sm", "type": "aws-sm",
- "aws": {"region": "us-east-1", "profile": "personal", "prefix": "scredmanager/"}},
+ "aws": {"region": "us-east-1", "profile": "personal", "prefix": "scredmgr/"}},
 {"name": "aws-ps", "type": "aws-ps",
- "aws": {"region": "us-east-1", "profile": "personal", "prefix": "/scredmanager/"}}
+ "aws": {"region": "us-east-1", "profile": "personal", "prefix": "/scredmgr/"}}
 ```
 
 `--secret-string` / `--value` would leak on argv, so writes pipe their
@@ -267,7 +276,7 @@ secrets that already live in LastPass:
 
 ```json
 {"name": "old-lastpass", "type": "lastpass",
- "lastpass": {"folder": "scredmanager"}}
+ "lastpass": {"folder": "scredmgr"}}
 ```
 
 Entries are `<folder>/<id>`; reads use `lpass show --password` (secret on
@@ -277,12 +286,12 @@ stdout). Log in first with `lpass login <email>`.
 
 One engine (the CLI), two front-ends. **The GUI never owns a secret and never
 touches the keychain** — the Rust backend does nothing but spawn
-`scredmanager <cmd> --json` and relay the envelope to a static HTML/JS view
+`scredmgr <cmd> --json` and relay the envelope to a static HTML/JS view
 (no npm, no bundler; `withGlobalTauri`).
 
 ```sh
 make gui-run      # dev: compile + open the window (needs Rust: brew install rust)
-make gui          # release binary at gui/src-tauri/target/release/scredmanager-gui
+make gui          # release binary at gui/src-tauri/target/release/scredmgr-gui
 make gui-audit    # verify no keychain/Security.framework dependency in gui/
 ```
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // TestSSHKeygenPassphraseRoundTrip is the full e2e: build the real binary,
@@ -24,10 +24,10 @@ func TestSSHKeygenPassphraseRoundTrip(t *testing.T) {
 	defer cancel()
 
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 
-	bin := filepath.Join(dir, "scredmanager")
-	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "../../cmd/scredmanager")
+	bin := filepath.Join(dir, "scredmgr")
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "../../cmd/scredmgr")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v: %s", err, out)
 	}
@@ -55,7 +55,7 @@ func TestSSHKeygenPassphraseRoundTrip(t *testing.T) {
 	verify.Env = append(os.Environ(),
 		"SSH_ASKPASS="+bin,
 		"SSH_ASKPASS_REQUIRE=force",
-		"SCREDMANAGER_ASKPASS_ID="+id,
+		"SCREDMGR_ASKPASS_ID="+id,
 	)
 	out, err := verify.Output()
 	if err != nil {

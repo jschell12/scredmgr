@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 func writeConfig(t *testing.T, content string, mode os.FileMode) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("SCREDMANAGER_HOME", dir)
+	t.Setenv("SCREDMGR_HOME", dir)
 	if err := os.WriteFile(filepath.Join(dir, "providers.json"), []byte(content), mode); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestLoadConfigs(t *testing.T) {
 }
 
 func TestLoadConfigsMissingFile(t *testing.T) {
-	t.Setenv("SCREDMANAGER_HOME", t.TempDir())
+	t.Setenv("SCREDMGR_HOME", t.TempDir())
 	configs, err := LoadConfigs()
 	if err != nil || configs != nil {
 		t.Fatalf("missing file should yield nil, nil: %v %v", configs, err)

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jschell12/scredmanager/internal/safety"
+	"github.com/jschell12/scredmgr/internal/safety"
 )
 
 // Op stores secrets as 1Password items via the official `op` CLI (biometric

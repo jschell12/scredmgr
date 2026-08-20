@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/jschell12/scredmanager/internal/safety"
-	"github.com/jschell12/scredmanager/internal/store"
+	"github.com/jschell12/scredmgr/internal/safety"
+	"github.com/jschell12/scredmgr/internal/store"
 )
 
 // envPair is one resolved entry ready for env injection.

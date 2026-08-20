@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jschell12/scredmanager/internal/safety"
+	"github.com/jschell12/scredmgr/internal/safety"
 )
 
 // AWSPS stores secrets in AWS SSM Parameter Store as SecureString parameters
-// named "<prefix><id>" (prefix conventionally "/scredmanager/").
+// named "<prefix><id>" (prefix conventionally "/scredmgr/").
 type AWSPS struct {
 	name string
 	awsCLI
