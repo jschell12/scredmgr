@@ -1,5 +1,24 @@
 # STATUS
 
+## 2026-08-21
+
+### Completed
+- **Public release**: repository is now public at https://github.com/jschell12/scredmgr.
+  - Pre-release audit of the full git history (all branches, deleted files, commit messages): no secrets, no personal data beyond git authorship — clean.
+  - Deleted 11 stale merged branches; `main` is the only branch.
+  - Added MIT license (PR #12).
+  - Set repo description and topics (cli, go, keychain, macos, secrets-management, tauri).
+
+### In progress
+- Nothing.
+
+### Blockers
+- None.
+
+### Next steps
+- Consider `--path` support in the GUI (Tauri) entry list (carried over).
+- Optionally teach `sync` to map namespaces to provider path prefixes (carried over).
+
 ## 2026-08-06
 
 ### Completed
