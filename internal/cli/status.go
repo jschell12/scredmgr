@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -100,6 +101,9 @@ func newStatusCmd() *cobra.Command {
 // postNotification shows a native notification via osascript. Only entry ids
 // and day counts are included — never secret material.
 func postNotification(title, message string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("--notify is macOS-only")
+	}
 	script := fmt.Sprintf("display notification %q with title %q", message, title)
 	return exec.Command("osascript", "-e", script).Run()
 }

@@ -131,7 +131,7 @@ func newLoginCmd() *cobra.Command {
 			m := &store.Meta{
 				EnvVar:    svc.EnvVar,
 				CreatedAt: now.Format(time.RFC3339),
-				Storage:   store.StorageKeychain,
+				Storage:   store.PlatformStorage(),
 			}
 			if prev, err := store.ReadMeta(id); err == nil {
 				m.Label = prev.Label

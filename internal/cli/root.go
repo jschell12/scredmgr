@@ -30,7 +30,7 @@ func (e *exitCodeError) Unwrap() error { return e.err }
 
 var (
 	jsonOut bool
-	backend store.Store = store.NewKeychainStore()
+	backend store.Store = store.NewPlatformStore()
 )
 
 // SetStore overrides the storage backend (tests only).
@@ -63,6 +63,9 @@ func newRootCmd() *cobra.Command {
 		newSSHCmd(),
 		newSyncCmd(),
 		newProvidersCmd(),
+		newShareCmd(),
+		newReceiveCmd(),
+		newInboxCmd(),
 	)
 	return root
 }

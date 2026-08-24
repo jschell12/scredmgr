@@ -69,11 +69,19 @@ func PathOf(id string) string {
 
 // FakeStore is an in-memory Store used by unit tests.
 type FakeStore struct {
-	mu      sync.Mutex
-	secrets map[string][]byte
+	mu       sync.Mutex
+	secrets  map[string][]byte
+	getCalls int
 
 	// FailSet, when non-nil, is returned from Set to simulate keychain failures.
 	FailSet error
+}
+
+// GetCalls reports how many times Get was called (dry-run assertions).
+func (f *FakeStore) GetCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.getCalls
 }
 
 // NewFakeStore returns an empty in-memory store.
@@ -96,6 +104,7 @@ func (f *FakeStore) Set(id string, secret []byte) error {
 func (f *FakeStore) Get(id string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.getCalls++
 	s, ok := f.secrets[id]
 	if !ok {
 		return nil, ErrNotFound

@@ -6,11 +6,16 @@ PREFIX ?= $(HOME)/.local
 CODESIGN_ID ?= Apple Development
 BUNDLE_ID := com.jschell12.scredmgr
 
-.PHONY: build test integration vet install clean gui gui-run gui-audit
+.PHONY: build build-linux test integration vet install clean gui gui-run gui-audit
 
 build:
 	go build -o bin/$(BINARY) ./cmd/$(BINARY)
 	codesign -f -s "$(CODESIGN_ID)" --identifier $(BUNDLE_ID) bin/$(BINARY)
+
+# Linux binaries use the encrypted FileStore backend (no keychain, no codesign).
+build-linux:
+	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY)-linux-amd64 ./cmd/$(BINARY)
+	GOOS=linux GOARCH=arm64 go build -o bin/$(BINARY)-linux-arm64 ./cmd/$(BINARY)
 
 test:
 	go vet ./...

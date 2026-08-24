@@ -72,7 +72,7 @@ func newSetCmd() *cobra.Command {
 				EnvVar:    envVar,
 				Notes:     notes,
 				CreatedAt: now.Format(time.RFC3339),
-				Storage:   store.StorageKeychain,
+				Storage:   store.PlatformStorage(),
 			}
 			if prev, err := store.ReadMeta(id); err == nil {
 				if m.Label == "" {

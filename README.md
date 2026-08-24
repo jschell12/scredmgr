@@ -95,6 +95,9 @@ scredmgr launchd install    # status --quiet --notify at 09:30
 | `ssh add <name>` | (Re)register with ssh-agent via stored passphrase |
 | `sync <provider> --push\|--pull [--only a,b] [--dry-run] [--overwrite]` | Copy secrets keychain ↔ remote provider |
 | `providers` / `providers check <name>` | List configured remote providers / probe connectivity and auth |
+| `share [--to host] [--only a,b] [--dry-run] [--overwrite] [--ignore-vpn] [--probe]` | Send secrets to another machine over ssh (VPN-gated; interactive host/entry pickers on a TTY) |
+| `receive --stdin [--overwrite]` | Store a share payload from stdin (run on the receiving machine, usually via ssh) |
+| `inbox ls` / `inbox import [--overwrite]` | List / drain encrypted spooled payloads (locked-keychain fallback) |
 
 Every command supports `--json` (`schemaVersion: 1` envelope).
 
@@ -102,7 +105,7 @@ Every command supports `--json` (`schemaVersion: 1` envelope).
 
 - **Secret** → Keychain generic password: service `scredmgr`, account `token/<id>`
 - **Metadata** → `~/.scredmgr/<id>.json`, mode 0600, atomic writes
-- `_storage` provenance marker (`keychain | file | mixed`) tells delete/migrate
+- `_storage` provenance marker (`keychain | encfile | file | mixed`) tells delete/migrate
   where the authoritative copy is. Plaintext in JSON exists only during the
   import-then-migrate window and is stripped only after a verified keychain
   round-trip.
@@ -281,6 +284,55 @@ secrets that already live in LastPass:
 
 Entries are `<folder>/<id>`; reads use `lpass show --password` (secret on
 stdout). Log in first with `lpass login <email>`.
+
+## LAN sharing (`share` / `receive` / `inbox`)
+
+Move secrets machine-to-machine over ssh — no third-party service in the path:
+
+```sh
+scredmgr share                          # pick host + entries interactively
+scredmgr share --to mini --only jira    # non-interactive
+```
+
+The sender pipes a JSON payload (wire format v1: `{version, from, sentAt,
+entries:[{id, secretB64, label, envVar, expiresAt, notes, kind}]}`) into
+`ssh -o BatchMode=yes <host> scredmgr receive --stdin --json`. Secrets travel
+on stdin only — never argv or env — so key-based ssh auth is required
+(BatchMode disables password prompts). Hosts come from `--to` or a picker over
+`~/.ssh/config` `Host` entries (`--probe` annotates reachability).
+
+**VPN gate.** Before sending, `share` checks for an active VPN (macOS:
+`scutil --nc list` + default-route interface; Linux: `ip route`). If one is
+up it warns and asks for confirmation on the terminal; with no TTY it fails
+closed unless `--ignore-vpn` is passed. Detection errors warn but don't block.
+
+**Receiver.** `receive` validates ids, skips existing entries unless
+`--overwrite`, and records `sharedFrom`/`sharedAt` provenance. Entries of
+kind `ssh` are skipped unless named explicitly with `--only`.
+
+**Encrypted inbox.** If the receiving keychain is locked (typical for
+non-interactive ssh sessions), entries are spooled as AES-256-GCM blobs under
+`~/.scredmgr/inbox/` and reported as `spooled`. Run `scredmgr inbox import`
+in a logged-in (GUI) session on that machine to drain them; blobs are deleted
+only after every entry lands.
+
+### Linux backend
+
+On non-macOS platforms secrets are stored in an encrypted file store instead
+of a keychain: AES-256-GCM blobs in `~/.scredmgr/.secrets/<id>.enc` with a
+machine-local key at `~/.scredmgr/store.key` (0600, created `O_EXCL`).
+Metadata records `_storage: "encfile"`.
+
+> `store.key` and `inbox.key` are machine-local key material: never back them
+> up, sync them, or copy them between machines. The key sits beside the
+> ciphertext, so this protects backups/copies of `.secrets/` — not against a
+> local root attacker.
+
+Cross-compile from macOS with:
+
+```sh
+make build-linux    # bin/scredmgr-linux-amd64 + bin/scredmgr-linux-arm64
+```
 
 ## GUI (Tauri v2)
 

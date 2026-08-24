@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/cobra"
 )
@@ -54,7 +55,13 @@ func plistPath() (string, error) {
 func newLaunchdCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "launchd",
-		Short: "Manage the daily expiry-check LaunchAgent",
+		Short: "Manage the daily expiry-check LaunchAgent (macOS-only)",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if runtime.GOOS != "darwin" {
+				return fmt.Errorf("launchd is macOS-only")
+			}
+			return nil
+		},
 	}
 
 	install := &cobra.Command{
