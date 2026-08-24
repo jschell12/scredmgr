@@ -37,7 +37,7 @@ func LoadAndMigrate(id string, s Store) (*Meta, error) {
 	}
 
 	m.Token = ""
-	m.Storage = StorageKeychain
+	m.Storage = PlatformStorage()
 	if err := WriteMeta(id, m); err != nil {
 		return m, fmt.Errorf("migrate %s: metadata rewrite failed: %w", id, err)
 	}

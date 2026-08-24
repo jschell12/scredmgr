@@ -149,7 +149,7 @@ func syncPush(ctx context.Context, p provider.Provider, only map[string]bool, dr
 			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "not migrated to keychain yet"})
 			continue
 		}
-		if m.Storage == store.StorageNone {
+		if !store.SecretInBackend(m) {
 			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "no keychain secret"})
 			continue
 		}
@@ -210,7 +210,7 @@ func syncPull(ctx context.Context, p provider.Provider, only map[string]bool, dr
 		now := time.Now()
 		m := &store.Meta{
 			CreatedAt:  now.Format(time.RFC3339),
-			Storage:    store.StorageKeychain,
+			Storage:    store.PlatformStorage(),
 			SyncedFrom: p.Name(),
 			SyncedAt:   now.Format(time.RFC3339),
 		}

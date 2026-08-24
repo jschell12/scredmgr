@@ -61,7 +61,7 @@ func newImportCmd() *cobra.Command {
 				m := &store.Meta{
 					EnvVar:    key,
 					CreatedAt: now,
-					Storage:   store.StorageKeychain,
+					Storage:   store.PlatformStorage(),
 				}
 				if svc := manifest.Find(services, id); svc != nil && svc.ExpiryDays > 0 {
 					m.ExpiresAt = time.Now().AddDate(0, 0, svc.ExpiryDays).Format(time.RFC3339)

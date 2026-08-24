@@ -15,7 +15,17 @@ const (
 	StorageFile     = "file"
 	StorageMixed    = "mixed"
 	StorageNone     = "none" // no keychain item (e.g. ssh key without a stored passphrase)
+	// StorageEncFile marks a secret held by the encrypted FileStore
+	// (~/.scredmgr/.secrets/<id>.enc) — the platform backend off macOS.
+	StorageEncFile = "encfile"
 )
+
+// SecretInBackend reports whether the authoritative secret lives in the
+// platform secret backend (keychain or encrypted file store), as opposed to
+// plaintext-in-metadata migration states or no secret at all.
+func SecretInBackend(m *Meta) bool {
+	return m.Storage == StorageKeychain || m.Storage == StorageEncFile
+}
 
 // Meta is the non-secret metadata for one entry, stored as
 // ~/.scredmgr/<id>.json with mode 0600.
@@ -39,6 +49,11 @@ type Meta struct {
 	// SyncedFrom / SyncedAt record pull provenance from a remote provider.
 	SyncedFrom string `json:"syncedFrom,omitempty"`
 	SyncedAt   string `json:"syncedAt,omitempty"`
+
+	// SharedFrom / SharedAt record one-shot provenance from a peer machine
+	// (`scredmgr share`). Unlike sync provenance, no remote copy is owned.
+	SharedFrom string `json:"sharedFrom,omitempty"`
+	SharedAt   string `json:"sharedAt,omitempty"`
 
 	// Token holds a plaintext secret ONLY during the import-then-migrate
 	// window (Storage == "file" or "mixed"). It is stripped after a verified
