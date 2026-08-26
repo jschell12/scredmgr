@@ -92,6 +92,7 @@ func HomeDir() (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	excludeFromTimeMachine(dir)
 	return dir, nil
 }
 

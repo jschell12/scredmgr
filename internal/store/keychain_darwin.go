@@ -52,9 +52,13 @@ func (k *KeychainStore) Set(id string, secret []byte) error {
 	if errors.Is(err, keychain.ErrorDuplicateItem) {
 		update := keychain.NewItem()
 		update.SetData(secret)
-		return keychain.UpdateItem(newItem(id), update)
+		err = keychain.UpdateItem(newItem(id), update)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	applyACL(id)
+	return nil
 }
 
 func (k *KeychainStore) Get(id string) ([]byte, error) {
