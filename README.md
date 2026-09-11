@@ -1,5 +1,7 @@
 # scredmgr
 
+[Website](https://jschell12.github.io/scredmgr/) · [Installation](https://jschell12.github.io/scredmgr/#install)
+
 Personal keychain-backed secrets broker for macOS. Replaces a plaintext
 `~/.agentsecrets` dotenv with a single Go binary: **secrets live in the macOS
 Keychain, metadata lives in 0600 JSON, and nothing secret is ever at rest in

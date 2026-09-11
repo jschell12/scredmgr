@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>scredmgr — Your secrets. Your Keychain. Your workflow.</title>
+    <meta
+      name="description"
+      content="An open-source secrets broker for macOS. Store tokens in Keychain, inject them into commands, and keep your terminal workflow. Built in Go. MIT licensed."
+    />
+    <meta name="theme-color" content="#edf1f6" />
+    <meta
+      property="og:title"
+      content="scredmgr — Secrets belong in your Keychain."
+    />
+    <meta
+      property="og:description"
+      content="A small, open-source secrets broker for your terminal. Keychain storage, scoped command injection, and a native desktop companion."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://jschell12.github.io/scredmgr/" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="nav wrap">
+      <a class="wordmark" href="./" aria-label="scredmgr home"
+        ><span class="mark" aria-hidden="true">s<span>_</span></span
+        >scredmgr</a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#workflow">How it works</a><a href="#install">Install</a
+        ><a class="github" href="https://github.com/jschell12/scredmgr"
+          >GitHub <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap">
+        <div class="hero-copy">
+          <p class="intro">
+            <span class="status-dot"></span> Open source. Built for your
+            terminal.
+          </p>
+          <h1>Secrets belong<br />in your Keychain.</h1>
+          <p class="lede">
+            Your scripts just need them at runtime. scredmgr stores your tokens
+            in macOS Keychain and injects them into the commands you already
+            use.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#install">Get started</a
+            ><a
+              class="text-link"
+              href="https://github.com/jschell12/scredmgr#command-reference"
+              >Read the docs <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <p class="hero-note">
+            A Go CLI + Tauri desktop companion. MIT licensed.
+          </p>
+        </div>
+        <div class="hero-demo">
+          <div class="keychain">
+            <div class="key-icon" aria-hidden="true">⚿</div>
+            <div>
+              <strong>macOS Keychain</strong><span>Your tokens live here.</span>
+            </div>
+            <span class="lock-label">Stored</span>
+          </div>
+          <div class="connector">
+            <span>Available when your command needs them</span>
+          </div>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="traffic" aria-hidden="true"
+                ><i></i><i></i><i></i></span
+              ><span>~/your-project</span><span>zsh</span>
+            </div>
+            <div class="terminal-body">
+              <p class="comment"># Store once, with a masked prompt</p>
+              <p><b>$</b> scredmgr set deploy --env-var API_TOKEN</p>
+              <p class="muted">Secret: ••••••••••••••••••••</p>
+              <p class="success">stored deploy (keychain)</p>
+              <p class="comment spaced">
+                # Inject into the command that needs it
+              </p>
+              <p><b>$</b> scredmgr run --only deploy -- ./deploy.sh</p>
+              <p class="muted">Your command receives API_TOKEN.</p>
+              <p class="terminal-end">
+                <span aria-hidden="true">└</span> Same script. No dotenv to
+                source.
+              </p>
+            </div>
+          </div>
+          <p class="demo-caption">
+            Illustrative workflow. Your secret never appears in the example.
+          </p>
+        </div>
+      </section>
+      <div class="facts wrap">
+        <span>macOS Keychain storage</span><span>One Go binary</span
+        ><span>Optional remote sync</span><span>Source you can inspect</span>
+      </div>
+      <section id="workflow" class="workflow wrap section">
+        <div class="section-heading">
+          <h2>A small change to<br />your everyday commands.</h2>
+          <p>
+            Keep your tools. Give credentials a dedicated home, then choose
+            where they’re used.
+          </p>
+        </div>
+        <div class="steps">
+          <article>
+            <span class="step-number">1</span>
+            <h3>Store a token</h3>
+            <p>
+              Use a masked prompt or import an existing dotenv file. Secret
+              values go into Keychain; metadata stays local.
+            </p>
+            <code>scredmgr set github</code>
+          </article>
+          <article>
+            <span class="step-number">2</span>
+            <h3>Scope a command</h3>
+            <p>
+              Inject selected entries into a child process. Use namespaces to
+              switch between personal and work credentials.
+            </p>
+            <code>scredmgr run --path work -- terraform plan</code>
+          </article>
+          <article>
+            <span class="step-number">3</span>
+            <h3>Stay ahead of expiry</h3>
+            <p>
+              Check configured expiry dates, verify tokens against live APIs,
+              and enable daily macOS notifications.
+            </p>
+            <code>scredmgr status</code>
+          </article>
+        </div>
+      </section>
+      <section class="details-section">
+        <div class="wrap details">
+          <div>
+            <p class="intro">Made for the work around the secret.</p>
+            <h2>Less credential<br />housekeeping.</h2>
+            <p class="lede">
+              From the first token to the next rotation, one tool keeps the
+              routine close to your terminal.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/jschell12/scredmgr#command-reference"
+              >Explore every command <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="feature-list">
+            <article>
+              <h3>Your accounts, in context</h3>
+              <p>
+                Namespace credentials like <code>work/github</code>. Overlay
+                work entries without rewriting your scripts.
+              </p>
+            </article>
+            <article>
+              <h3>A desktop companion</h3>
+              <p>
+                The Tauri GUI shows service status and expiry, guides login, and
+                imports dotenv files. Secret-bearing commands stay in the CLI.
+              </p>
+            </article>
+            <article>
+              <h3>Connect the stores you use</h3>
+              <p>
+                Explicitly push or pull with Vault, 1Password, AWS Secrets
+                Manager, and SSM Parameter Store. Keychain stays the canonical
+                local store.
+              </p>
+            </article>
+            <article>
+              <h3>SSH, with less juggling</h3>
+              <p>
+                Generate keys, keep passphrases in Keychain, and register with
+                ssh-agent. Private key files remain in your SSH directory.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="wrap section boundaries">
+        <div class="section-heading">
+          <h2>Clear about its boundaries.</h2>
+          <p>Good tools tell you exactly where your secrets go.</p>
+        </div>
+        <div class="boundary-grid">
+          <article>
+            <h3>Deliberate defaults</h3>
+            <p>
+              Masked token entry. <code>get</code> refuses to print to a
+              terminal. Authenticated <code>curl</code> requests are restricted
+              to the configured host. Plaintext export requires an explicit
+              opt-in.
+            </p>
+          </article>
+          <article>
+            <h3>Runtime means runtime</h3>
+            <p>
+              <code>run</code> passes secrets through the child process
+              environment. That command can read them, so use it with programs
+              you trust.
+            </p>
+          </article>
+          <article>
+            <h3>macOS first. Linux, too.</h3>
+            <p>
+              Linux uses an encrypted file store with a machine-local key,
+              rather than Keychain. It does not protect against an attacker who
+              can read both the key and ciphertext.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section id="install" class="wrap install section">
+        <div>
+          <p class="intro">Build it. Read it. Make it yours.</p>
+          <h2>Start with<br />your next command.</h2>
+          <p>
+            On macOS, install Go 1.26.1 or newer and the Xcode command line
+            tools, then build from source.
+          </p>
+          <p class="install-note">
+            This uses ad-hoc signing for a first install. Rebuilds may prompt
+            for Keychain access again. If you have an Apple Development signing
+            identity, use <code>make install</code> instead.
+          </p>
+          <a
+            class="text-link"
+            href="https://github.com/jschell12/scredmgr#quick-start"
+            >Full setup and migration guide
+            <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <div class="install-code">
+          <div class="code-heading">
+            <span>Install from source</span
+            ><button id="copy-install" type="button">Copy commands</button>
+          </div>
+          <pre><code id="install-command">git clone https://github.com/jschell12/scredmgr.git
+cd scredmgr
+make install CODESIGN_ID=-
+~/.local/bin/scredmgr --help</code></pre>
+          <p>
+            Add <code>~/.local/bin</code> to your PATH to use
+            <code>scredmgr</code> anywhere.
+          </p>
+          <span id="copy-status" class="sr-only" role="status"></span>
+        </div>
+      </section>
+      <section class="open-source wrap">
+        <span class="mark" aria-hidden="true">s<span>_</span></span>
+        <div>
+          <h2>Small tool. Open source.</h2>
+          <p>
+            Created by Josh Schell. Free to use, inspect, and improve under the
+            MIT license.
+          </p>
+        </div>
+        <a class="button secondary" href="https://github.com/jschell12/scredmgr"
+          >View on GitHub <span aria-hidden="true">↗</span></a
+        >
+      </section>
+    </main>
+    <footer class="wrap">
+      <a class="wordmark" href="./">scredmgr</a>
+      <p>A dedicated home for your credentials.</p>
+      <div>
+        <a href="https://github.com/jschell12/scredmgr/issues">Issues</a
+        ><a href="https://github.com/jschell12/scredmgr/blob/main/LICENSE"
+          >MIT license</a
+        >
+      </div>
+    </footer>
+  </body>
+</html>
