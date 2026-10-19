@@ -8,10 +8,15 @@ package provider
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // ErrReadOnly is returned by Put/Delete on providers that are pull-only.
 var ErrReadOnly = errors.New("provider is read-only")
+
+// ErrNoCurrentValue is returned by UpdatedAt when the entry exists remotely
+// but its current version has been deleted or destroyed.
+var ErrNoCurrentValue = errors.New("remote entry has no current value")
 
 // Provider is a remote secret backend. Ids are in local form (any remote
 // prefix/folder already stripped by the implementation).
@@ -25,4 +30,12 @@ type Provider interface {
 	Delete(ctx context.Context, id string) error
 	// Writable reports whether Put/Delete are supported (false: lastpass).
 	Writable() bool
+}
+
+// Timestamped is implemented by providers that can say when an entry's
+// current value was written without fetching the value. `sync --pull --newer`
+// and `--since` need it to decide whether a remote copy is newer than the
+// local one.
+type Timestamped interface {
+	UpdatedAt(ctx context.Context, id string) (time.Time, error)
 }

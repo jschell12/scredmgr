@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,6 +41,10 @@ func newRmCmd() *cobra.Command {
 			}
 			if err := store.DeleteMeta(id); err != nil {
 				return err
+			}
+			// Remember the deletion so a scheduled pull does not bring it back.
+			if err := store.RecordTombstone(id, time.Now()); err != nil {
+				return fmt.Errorf("removed %s, but recording the tombstone failed: %w", id, err)
 			}
 
 			var removedFiles []string

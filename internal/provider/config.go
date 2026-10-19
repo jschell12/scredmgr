@@ -20,6 +20,15 @@ type Config struct {
 	Lastpass *LastpassCfg `json:"lastpass,omitempty"`
 }
 
+// OwnSecretIDs returns the local ids that hold this provider's own
+// credentials (a Vault tokenRef). Sync never moves them in either direction.
+func (c Config) OwnSecretIDs() []string {
+	if c.Vault != nil && c.Vault.TokenRef != "" {
+		return []string{c.Vault.TokenRef}
+	}
+	return nil
+}
+
 // VaultCfg configures a HashiCorp Vault KV v2 backend.
 type VaultCfg struct {
 	Addr       string `json:"addr"`

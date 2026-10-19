@@ -105,7 +105,7 @@ func applyShared(entries []share.Entry, from string, overwrite bool) (results []
 			results = append(results, shareResult{ID: e.ID, Action: "failed", Reason: err.Error()})
 			continue
 		}
-		now := time.Now().Format(time.RFC3339)
+		now := store.Stamp(time.Now())
 		m := &store.Meta{
 			Label:      e.Label,
 			EnvVar:     e.EnvVar,
