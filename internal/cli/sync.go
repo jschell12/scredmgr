@@ -24,21 +24,23 @@ type syncResult struct {
 	ID string `json:"id"`
 	// pushed | pulled | would-push | would-pull | skipped | failed, plus for
 	// --newer: unchanged (local already matches the remote's latest write)
-	// and kept-local (local changed after the remote copy; not overwritten).
+	// and kept-local (local changed after the remote copy; not overwritten);
+	// --create-only: held (exists locally, never replaced).
 	Action string `json:"action"`
 	Reason string `json:"reason,omitempty"`
 }
 
 func newSyncCmd() *cobra.Command {
 	var (
-		push      bool
-		pull      bool
-		only      string
-		dryRun    bool
-		overwrite bool
-		newer     bool
-		since     string
-		include   string
+		push       bool
+		pull       bool
+		only       string
+		dryRun     bool
+		overwrite  bool
+		newer      bool
+		createOnly bool
+		since      string
+		include    string
 	)
 	cmd := &cobra.Command{
 		Use:   "sync <provider>",
@@ -47,7 +49,15 @@ func newSyncCmd() *cobra.Command {
 			"store: --push copies local entries to the provider (always overwriting\n" +
 			"remote), --pull copies remote entries into the keychain (skipping existing\n" +
 			"local entries unless --overwrite). There is no merge and no delete\n" +
-			"propagation.",
+			"propagation.\n\n" +
+			"For unattended pulls: --newer replaces a local entry only when the\n" +
+			"remote value was written after the entry last changed locally (else\n" +
+			"kept-local); --create-only pulls only ids missing locally (existing\n" +
+			"ones are held); --since <RFC3339> skips remote entries written before\n" +
+			"that time. Ids removed with `rm` are tombstoned: no pull recreates them\n" +
+			"from a remote copy written at or before the removal. The provider's own\n" +
+			"credential (a Vault tokenRef) never syncs. --include takes\n" +
+			"comma-separated glob patterns (path.Match; * does not cross /).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if push == pull {
@@ -68,8 +78,8 @@ func newSyncCmd() *cobra.Command {
 			if push && !p.Writable() {
 				return fmt.Errorf("provider %s is read-only; --push is not supported", p.Name())
 			}
-			if push && (newer || since != "") {
-				return errors.New("--newer and --since apply to --pull only")
+			if push && (newer || createOnly || since != "") {
+				return errors.New("--newer, --create-only and --since apply to --pull only")
 			}
 			var sinceT *time.Time
 			if since != "" {
@@ -103,12 +113,15 @@ func newSyncCmd() *cobra.Command {
 
 			ctx := cmd.Context()
 			var results []syncResult
-			filter := idFilter{only: onlySet, include: patterns}
+			filter := idFilter{only: onlySet, include: patterns, exclude: map[string]bool{}}
+			for _, own := range cfg.OwnSecretIDs() {
+				filter.exclude[own] = true
+			}
 			if push {
 				results, err = syncPush(ctx, p, filter, dryRun)
 			} else {
 				results, err = syncPull(ctx, p, filter, pullOpts{
-					dryRun: dryRun, overwrite: overwrite, newer: newer, since: sinceT,
+					dryRun: dryRun, overwrite: overwrite, newer: newer, createOnly: createOnly, since: sinceT,
 				})
 			}
 			if err != nil {
@@ -132,6 +145,7 @@ func newSyncCmd() *cobra.Command {
 					"skipped":   counts["skipped"],
 					"unchanged": counts["unchanged"],
 					"keptLocal": counts["kept-local"],
+					"held":      counts["held"],
 					"failed":    failed,
 				})
 			} else {
@@ -161,7 +175,8 @@ func newSyncCmd() *cobra.Command {
 	cmd.Flags().StringVar(&since, "since", "", "pull: skip remote entries written before this RFC3339 time")
 	cmd.Flags().StringVar(&include, "include", "", "comma-separated id glob patterns to limit the sync to")
 	cmd.MarkFlagsMutuallyExclusive("push", "pull")
-	cmd.MarkFlagsMutuallyExclusive("overwrite", "newer")
+	cmd.Flags().BoolVar(&createOnly, "create-only", false, "pull: only create ids missing locally; report existing ones as held")
+	cmd.MarkFlagsMutuallyExclusive("overwrite", "newer", "create-only")
 	return cmd
 }
 
@@ -170,9 +185,14 @@ func newSyncCmd() *cobra.Command {
 type idFilter struct {
 	only    map[string]bool
 	include []string
+	// exclude always wins, over --only and --include alike.
+	exclude map[string]bool
 }
 
 func (f idFilter) match(id string) bool {
+	if f.exclude[id] {
+		return false
+	}
 	if f.only != nil && !f.only[id] {
 		return false
 	}
@@ -230,16 +250,29 @@ func syncPush(ctx context.Context, p provider.Provider, filter idFilter, dryRun 
 			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
 			continue
 		}
+		// Record the remote write time we produced, so a later --newer pull
+		// (and its --dry-run) sees this entry as unchanged without fetching
+		// the value back. Best effort: the push itself already succeeded.
+		if ts, ok := p.(provider.Timestamped); ok {
+			if at, err := ts.UpdatedAt(ctx, id); err == nil {
+				m.SyncedFrom, m.SyncedAt, m.RemoteAt = p.Name(), store.Stamp(time.Now()), at.UTC().Format(time.RFC3339Nano)
+				if err := store.WriteMeta(id, m); err != nil {
+					results = append(results, syncResult{ID: id, Action: "pushed", Reason: "provenance not recorded: " + err.Error()})
+					continue
+				}
+			}
+		}
 		results = append(results, syncResult{ID: id, Action: "pushed"})
 	}
 	return results, nil
 }
 
 type pullOpts struct {
-	dryRun    bool
-	overwrite bool
-	newer     bool
-	since     *time.Time
+	dryRun     bool
+	overwrite  bool
+	newer      bool
+	createOnly bool
+	since      *time.Time
 }
 
 // localChangeTime is the latest moment the local entry's value was written:
@@ -275,12 +308,9 @@ func remoteAfter(remoteAt time.Time, recorded string) bool {
 }
 
 func syncPull(ctx context.Context, p provider.Provider, filter idFilter, o pullOpts) ([]syncResult, error) {
-	var ts provider.Timestamped
-	if o.newer || o.since != nil {
-		var ok bool
-		if ts, ok = p.(provider.Timestamped); !ok {
-			return nil, fmt.Errorf("provider %s cannot report write times; --newer/--since are not supported", p.Name())
-		}
+	ts, _ := p.(provider.Timestamped)
+	if (o.newer || o.since != nil) && ts == nil {
+		return nil, fmt.Errorf("provider %s cannot report write times; --newer/--since are not supported", p.Name())
 	}
 	remoteIDs, err := p.List(ctx)
 	if err != nil {
@@ -292,107 +322,150 @@ func syncPull(ctx context.Context, p provider.Provider, filter idFilter, o pullO
 		return nil, err
 	}
 	var results []syncResult
+	add := func(id, action, reason string) {
+		results = append(results, syncResult{ID: id, Action: action, Reason: reason})
+	}
 	for _, id := range remoteIDs {
 		if !filter.match(id) {
 			continue
 		}
 		if err := store.ValidateID(id); err != nil {
-			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "invalid id for local store"})
+			add(id, "skipped", "invalid id for local store")
 			continue
 		}
 		prev, perr := store.ReadMeta(id)
 		exists := perr == nil
-		if exists && !o.overwrite && !o.newer {
-			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "exists locally (use --overwrite)"})
+
+		if exists {
+			switch {
+			case o.createOnly:
+				add(id, "held", "")
+				continue
+			case !o.overwrite && !o.newer:
+				add(id, "skipped", "exists locally (use --overwrite)")
+				continue
+			}
+		}
+
+		var tomb time.Time
+		tombstoned := false
+		if !exists {
+			t, ok, err := store.Tombstone(id)
+			if err != nil {
+				add(id, "failed", "tombstones unreadable: "+err.Error())
+				continue
+			}
+			tomb, tombstoned = t, ok
+			if tombstoned && ts == nil {
+				add(id, "skipped", "removed locally; provider cannot report write times")
+				continue
+			}
+		}
+
+		// The remote write time, from metadata only, when any rule needs it.
+		var remoteAt time.Time
+		remoteStamp := ""
+		// Scheduled modes always read it, so a deleted remote version is a
+		// clean skip rather than a failed fetch.
+		if ts != nil && (o.since != nil || tombstoned || o.newer || o.createOnly) {
+			at, err := ts.UpdatedAt(ctx, id)
+			if errors.Is(err, provider.ErrNoCurrentValue) {
+				add(id, "skipped", "remote current version is deleted")
+				continue
+			}
+			if err != nil {
+				add(id, "failed", err.Error())
+				continue
+			}
+			remoteAt, remoteStamp = at, at.UTC().Format(time.RFC3339Nano)
+		}
+		if tombstoned && !remoteAt.After(tomb) {
+			add(id, "skipped", "removed locally at "+tomb.UTC().Format(time.RFC3339)+"; remote copy is not newer")
+			continue
+		}
+		if o.since != nil && remoteAt.Before(*o.since) {
+			if exists {
+				add(id, "unchanged", "")
+			} else {
+				add(id, "skipped", "written before --since")
+			}
 			continue
 		}
 
 		// compareLocal: remote is newer than the local entry, so fetch the
 		// value and skip the keychain write if it already matches.
 		compareLocal := false
-		remoteStamp := ""
-		if ts != nil {
-			remoteAt, err := ts.UpdatedAt(ctx, id)
-			if errors.Is(err, provider.ErrNoCurrentValue) {
-				results = append(results, syncResult{ID: id, Action: "skipped", Reason: "remote current version is deleted"})
+		if exists && o.newer {
+			localAt, ok := localChangeTime(prev)
+			switch {
+			case prev.SyncedFrom == p.Name() && prev.RemoteAt != "" && !remoteAfter(remoteAt, prev.RemoteAt):
+				// Nothing written remotely since the copy we hold (pulled or pushed).
+				add(id, "unchanged", "")
+				continue
+			case !ok:
+				add(id, "kept-local", "local entry has no timestamp")
+				continue
+			case !remoteAt.After(localAt) && prev.SyncedFrom == p.Name():
+				add(id, "unchanged", "")
+				continue
+			case !remoteAt.After(localAt):
+				add(id, "kept-local", "local entry changed after the remote copy")
 				continue
 			}
-			if err != nil {
-				results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
-				continue
-			}
-			if o.since != nil && remoteAt.Before(*o.since) {
-				if exists {
-					results = append(results, syncResult{ID: id, Action: "unchanged"})
-				} else {
-					results = append(results, syncResult{ID: id, Action: "skipped", Reason: "written before --since"})
-				}
-				continue
-			}
-			remoteStamp = remoteAt.UTC().Format(time.RFC3339Nano)
-			if exists && o.newer {
-				localAt, ok := localChangeTime(prev)
-				switch {
-				case prev.SyncedFrom == p.Name() && prev.RemoteAt != "" && !remoteAfter(remoteAt, prev.RemoteAt):
-					// Nothing written remotely since the copy we hold.
-					results = append(results, syncResult{ID: id, Action: "unchanged"})
-					continue
-				case !ok:
-					results = append(results, syncResult{ID: id, Action: "kept-local", Reason: "local entry has no timestamp"})
-					continue
-				case !remoteAt.After(localAt) && prev.SyncedFrom == p.Name():
-					results = append(results, syncResult{ID: id, Action: "unchanged"})
-					continue
-				case !remoteAt.After(localAt):
-					results = append(results, syncResult{ID: id, Action: "kept-local", Reason: "local entry changed after the remote copy"})
-					continue
-				}
-				compareLocal = true
-			}
+			compareLocal = true
 		}
 
 		if o.dryRun {
-			results = append(results, syncResult{ID: id, Action: "would-pull"})
+			if compareLocal {
+				// A real run fetches the value and reports unchanged if it
+				// matches; dry-run never transfers values, so it cannot know.
+				add(id, "would-pull", "remote is newer; unchanged if the values match")
+			} else {
+				add(id, "would-pull", "")
+			}
 			continue
 		}
 		secret, err := p.Get(ctx, id)
 		if err != nil {
-			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+			add(id, "failed", err.Error())
 			continue
 		}
 		now := time.Now()
 		if compareLocal {
 			if cur, err := backend.Get(id); err == nil && bytes.Equal(cur, secret) {
-				// Same value (e.g. it was pushed from here): record provenance
-				// so the next run sees local as current, without a keychain write.
-				prev.SyncedFrom, prev.SyncedAt, prev.RemoteAt = p.Name(), now.Format(time.RFC3339), remoteStamp
+				// Same value (e.g. pushed by an older scredmgr): record
+				// provenance so the next run sees local as current.
+				prev.SyncedFrom, prev.SyncedAt, prev.RemoteAt = p.Name(), store.Stamp(now), remoteStamp
 				if err := store.WriteMeta(id, prev); err != nil {
-					results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+					add(id, "failed", err.Error())
 					continue
 				}
-				results = append(results, syncResult{ID: id, Action: "unchanged"})
+				add(id, "unchanged", "")
 				continue
 			}
 		}
 		if err := backend.Set(id, secret); err != nil {
-			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+			add(id, "failed", err.Error())
 			continue
 		}
-		m := &store.Meta{
-			CreatedAt:  now.Format(time.RFC3339),
-			Storage:    store.PlatformStorage(),
-			SyncedFrom: p.Name(),
-			SyncedAt:   now.Format(time.RFC3339),
-			RemoteAt:   remoteStamp,
-		}
+		var m *store.Meta
 		if exists {
-			m.Label, m.EnvVar, m.Notes = prev.Label, prev.EnvVar, prev.Notes
+			// Replace the value, keep everything else about the entry:
+			// label, env var, notes, expiry, ssh fields, share provenance.
+			cp := *prev
+			m = &cp
+			m.Token = ""
+		} else {
+			m = &store.Meta{}
 		}
+		m.CreatedAt = store.Stamp(now)
+		m.Storage = store.PlatformStorage()
+		m.SyncedFrom, m.SyncedAt, m.RemoteAt = p.Name(), store.Stamp(now), remoteStamp
 		if svc := manifest.Find(services, id); svc != nil {
 			if m.EnvVar == "" {
 				m.EnvVar = svc.EnvVar
 			}
-			if svc.ExpiryDays > 0 {
+			if svc.ExpiryDays > 0 && m.ExpiresAt == "" {
 				m.ExpiresAt = now.AddDate(0, 0, svc.ExpiryDays).Format(time.RFC3339)
 			}
 		}
@@ -400,10 +473,10 @@ func syncPull(ctx context.Context, p provider.Provider, filter idFilter, o pullO
 			if !exists {
 				backend.Delete(id) // no keychain-only orphans
 			}
-			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+			add(id, "failed", err.Error())
 			continue
 		}
-		results = append(results, syncResult{ID: id, Action: "pulled"})
+		add(id, "pulled", "")
 	}
 	return results, nil
 }

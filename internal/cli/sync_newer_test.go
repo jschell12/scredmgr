@@ -294,8 +294,10 @@ func TestPullNewerSkipsDeletedRemote(t *testing.T) {
 	tp := newTimed(map[string][]byte{"custom:X": []byte("v")}, map[string]time.Time{})
 	tp.deleted["custom:X"] = true
 	withTimedProvider(t, home, tp)
-	if res := pullResults(t, "--newer"); res["custom:X"] != "skipped" {
-		t.Fatalf("want skipped, got %q", res["custom:X"])
+	for _, mode := range []string{"--newer", "--create-only"} {
+		if res := pullResults(t, mode); res["custom:X"] != "skipped" {
+			t.Fatalf("%s: want skipped, got %q", mode, res["custom:X"])
+		}
 	}
 	if _, err := fake.Get("custom:X"); err == nil {
 		t.Fatal("deleted remote version pulled")
@@ -349,7 +351,7 @@ func TestPullNewerNeedsTimestampedProvider(t *testing.T) {
 	}
 }
 
-// pullResults runs a --json pull and returns id -> action.
+// pullResults runs a pull through syncPull and returns id -> action.
 func pullResults(t *testing.T, extra ...string) map[string]string {
 	t.Helper()
 	cfg, err := provider.LoadConfigs()
@@ -362,8 +364,13 @@ func pullResults(t *testing.T, extra ...string) map[string]string {
 	}
 	o := pullOpts{}
 	for _, a := range extra {
-		if a == "--newer" {
+		switch a {
+		case "--newer":
 			o.newer = true
+		case "--create-only":
+			o.createOnly = true
+		case "--dry-run":
+			o.dryRun = true
 		}
 	}
 	results, err := syncPull(context.Background(), p, idFilter{}, o)
@@ -375,4 +382,197 @@ func pullResults(t *testing.T, extra ...string) map[string]string {
 		out[r.ID] = r.Action
 	}
 	return out
+}
+
+func TestPullCreateOnlyHoldsExisting(t *testing.T) {
+	fake, home := withTestEnv(t)
+	tp := newTimed(
+		map[string][]byte{"custom:HAVE": []byte("remote-newer"), "custom:NEW": []byte("fresh")},
+		map[string]time.Time{"custom:HAVE": ts("2026-10-19T12:00:00Z"), "custom:NEW": ts("2026-10-19T12:00:00Z")},
+	)
+	withTimedProvider(t, home, tp)
+	addLocal(t, fake, "custom:HAVE", "local", &store.Meta{Storage: store.StorageKeychain, CreatedAt: "2026-10-01T00:00:00Z"})
+	res := pullResults(t, "--create-only")
+	if res["custom:HAVE"] != "held" || res["custom:NEW"] != "pulled" {
+		t.Fatalf("results = %v", res)
+	}
+	if got, _ := fake.Get("custom:HAVE"); string(got) != "local" {
+		t.Fatalf("create-only replaced an existing entry: %q", got)
+	}
+	if tp.metaCalls["custom:HAVE"] != 0 || tp.getCalls != 1 {
+		t.Fatalf("held entry was read remotely: meta=%d gets=%d", tp.metaCalls["custom:HAVE"], tp.getCalls)
+	}
+	if err := runCLI(t, "sync", "fake", "--pull", "--create-only", "--newer"); err == nil {
+		t.Fatal("--create-only with --newer: want an error")
+	}
+}
+
+func TestTombstoneBlocksResurrectionInEveryMode(t *testing.T) {
+	removedAt := time.Date(2026, 10, 19, 12, 0, 0, 500, time.UTC)
+	for _, mode := range [][]string{{}, {"--newer"}, {"--create-only"}} {
+		fake, home := withTestEnv(t)
+		tp := newTimed(
+			map[string][]byte{"custom:OLD": []byte("stale"), "custom:SAME": []byte("stale"), "custom:LATER": []byte("new")},
+			map[string]time.Time{
+				"custom:OLD":   removedAt.Add(-time.Hour),
+				"custom:SAME":  removedAt, // boundary: written at the removal instant
+				"custom:LATER": removedAt.Add(time.Nanosecond),
+			},
+		)
+		withTimedProvider(t, home, tp)
+		for _, id := range []string{"custom:OLD", "custom:SAME", "custom:LATER"} {
+			if err := store.RecordTombstone(id, removedAt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		res := pullResults(t, mode...)
+		if res["custom:OLD"] != "skipped" || res["custom:SAME"] != "skipped" || res["custom:LATER"] != "pulled" {
+			t.Fatalf("mode %v: results = %v", mode, res)
+		}
+		if _, err := fake.Get("custom:OLD"); err == nil {
+			t.Fatalf("mode %v: tombstoned id recreated", mode)
+		}
+	}
+}
+
+func TestRmRecordsTombstone(t *testing.T) {
+	fake, home := withTestEnv(t)
+	tp := newTimed(map[string][]byte{"custom:GONE": []byte("stale")}, map[string]time.Time{"custom:GONE": ts("2026-10-19T12:00:00Z")})
+	withTimedProvider(t, home, tp)
+	addLocal(t, fake, "custom:GONE", "v", &store.Meta{Storage: store.StorageKeychain, CreatedAt: "2026-10-01T00:00:00Z"})
+	if err := runCLI(t, "rm", "custom:GONE"); err != nil {
+		t.Fatal(err)
+	}
+	at, ok, err := store.Tombstone("custom:GONE")
+	if err != nil || !ok || time.Since(at) > time.Minute {
+		t.Fatalf("tombstone = %v %v %v", at, ok, err)
+	}
+	if res := pullResults(t); res["custom:GONE"] != "skipped" {
+		t.Fatalf("plain pull after rm: %q", res["custom:GONE"])
+	}
+	ids, _ := store.ListIDs()
+	for _, id := range ids {
+		if strings.Contains(id, "tombstone") {
+			t.Fatalf("tombstone file listed as an entry: %v", ids)
+		}
+	}
+}
+
+func TestProviderTokenRefNeverSyncs(t *testing.T) {
+	fake, home := withTestEnv(t)
+	fp := &fakeProvider{name: "fake", writable: true, data: map[string][]byte{"vault-token": []byte("remote-copy"), "custom:A": []byte("a")}}
+	withFakeProvider(t, home, fp)
+	cfg := `{"providers":[{"name":"fake","type":"vault","vault":{"addr":"http://x","mount":"secret","tokenRef":"vault-token"}}]}`
+	if err := os.WriteFile(home+"/providers.json", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addLocal(t, fake, "vault-token", "local-token", nil)
+	for _, args := range [][]string{
+		{"--pull", "--overwrite", "--include", "*"},
+		{"--pull", "--overwrite", "--only", "vault-token"},
+		{"--push", "--include", "*"},
+		{"--push", "--only", "vault-token"},
+	} {
+		fp.data["vault-token"] = []byte("remote-copy")
+		if err := runCLI(t, append([]string{"sync", "fake"}, args...)...); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if got, _ := fake.Get("vault-token"); string(got) != "local-token" {
+			t.Fatalf("%v: local token replaced: %q", args, got)
+		}
+		if string(fp.data["vault-token"]) != "remote-copy" {
+			t.Fatalf("%v: token pushed to its own provider", args)
+		}
+	}
+	if got, _ := fake.Get("custom:A"); string(got) != "a" {
+		t.Fatal("ordinary id not pulled alongside")
+	}
+}
+
+func TestPullNewerReplacePreservesEntryFields(t *testing.T) {
+	fake, home := withTestEnv(t)
+	tp := newTimed(map[string][]byte{"ssh:deploy": []byte("new-pass")}, map[string]time.Time{"ssh:deploy": ts("2026-10-19T12:00:00Z")})
+	withTimedProvider(t, home, tp)
+	addLocal(t, fake, "ssh:deploy", "old-pass", &store.Meta{
+		Storage: store.StorageKeychain, CreatedAt: "2026-10-01T00:00:00Z",
+		Kind: "ssh", KeyPath: "/k/deploy", Fingerprint: "SHA256:x", PublicKey: "ssh-ed25519 AAAA",
+		ExpiresAt: "2027-01-01T00:00:00Z", Label: "L", EnvVar: "E",
+	})
+	if res := pullResults(t, "--newer"); res["ssh:deploy"] != "pulled" {
+		t.Fatalf("got %v", res)
+	}
+	m, _ := store.ReadMeta("ssh:deploy")
+	if m.Kind != "ssh" || m.KeyPath != "/k/deploy" || m.Fingerprint != "SHA256:x" || m.PublicKey != "ssh-ed25519 AAAA" ||
+		m.ExpiresAt != "2027-01-01T00:00:00Z" || m.Label != "L" || m.EnvVar != "E" {
+		t.Fatalf("fields lost on replace: %+v", m)
+	}
+}
+
+func TestLocalStampsHaveNanoseconds(t *testing.T) {
+	fake, home := withTestEnv(t)
+	_ = fake
+	tp := newTimed(map[string][]byte{"custom:N": []byte("v")}, map[string]time.Time{"custom:N": ts("2026-10-19T12:00:00Z")})
+	withTimedProvider(t, home, tp)
+	pullResults(t)
+	m, _ := store.ReadMeta("custom:N")
+	for _, s := range []string{m.CreatedAt, m.SyncedAt} {
+		if _, err := time.Parse(time.RFC3339Nano, s); err != nil || !strings.Contains(s, ".") {
+			t.Fatalf("stamp %q lacks sub-second precision", s)
+		}
+	}
+	// set, login, ssh, import and receive all stamp through store.Stamp.
+	if s := store.Stamp(time.Date(2026, 10, 19, 12, 0, 0, 123456789, time.UTC)); s != "2026-10-19T12:00:00.123456789Z" {
+		t.Fatalf("Stamp = %q", s)
+	}
+}
+
+func TestDryRunMatchesRealRun(t *testing.T) {
+	fake, home := withTestEnv(t)
+	removedAt := ts("2026-10-19T12:00:00Z")
+	tp := newTimed(
+		map[string][]byte{"custom:STEADY": []byte("v"), "custom:LOCALNEW": []byte("r"), "custom:TOMB": []byte("r"), "custom:FRESH": []byte("f")},
+		map[string]time.Time{
+			"custom:STEADY": ts("2026-10-19T11:00:00.5Z"), "custom:LOCALNEW": ts("2026-10-19T11:00:00Z"),
+			"custom:TOMB": ts("2026-10-19T11:00:00Z"), "custom:FRESH": ts("2026-10-19T13:00:00Z"),
+		},
+	)
+	withTimedProvider(t, home, tp)
+	addLocal(t, fake, "custom:STEADY", "v", &store.Meta{Storage: store.StorageKeychain, CreatedAt: "2026-10-19T11:00:00Z",
+		SyncedFrom: "fake", SyncedAt: "2026-10-19T11:00:00Z", RemoteAt: "2026-10-19T11:00:00.5Z"})
+	addLocal(t, fake, "custom:LOCALNEW", "l", &store.Meta{Storage: store.StorageKeychain, CreatedAt: "2026-10-19T11:30:00Z"})
+	if err := store.RecordTombstone("custom:TOMB", removedAt); err != nil {
+		t.Fatal(err)
+	}
+	dry := pullResults(t, "--newer", "--dry-run")
+	if tp.getCalls != 0 {
+		t.Fatalf("dry-run fetched values: %d", tp.getCalls)
+	}
+	real := pullResults(t, "--newer")
+	for id, want := range real {
+		got := dry[id]
+		if want == "pulled" {
+			want = "would-pull"
+		}
+		if got != want {
+			t.Fatalf("%s: dry-run %q, real run %q", id, got, real[id])
+		}
+	}
+	if dry["custom:STEADY"] != "unchanged" {
+		t.Fatalf("steady entry under dry-run: %q", dry["custom:STEADY"])
+	}
+}
+
+func TestPushRecordsRemoteAtSoDryRunSeesUnchanged(t *testing.T) {
+	fake, home := withTestEnv(t)
+	tp := newTimed(map[string][]byte{}, map[string]time.Time{})
+	withTimedProvider(t, home, tp)
+	addLocal(t, fake, "custom:P", "v", &store.Meta{Storage: store.StorageKeychain, CreatedAt: "2026-10-19T11:00:00Z"})
+	// The fake records a write time when the value is put.
+	tp.times["custom:P"] = ts("2026-10-19T12:00:00Z")
+	if err := runCLI(t, "sync", "fake", "--push", "--only", "custom:P"); err != nil {
+		t.Fatal(err)
+	}
+	if res := pullResults(t, "--newer", "--dry-run"); res["custom:P"] != "unchanged" {
+		t.Fatalf("after push, dry-run --newer = %q", res["custom:P"])
+	}
 }

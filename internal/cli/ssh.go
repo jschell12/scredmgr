@@ -146,7 +146,7 @@ func newSSHKeygenCmd() *cobra.Command {
 				KeyPath:     res.KeyPath,
 				PublicKey:   res.PublicKey,
 				Fingerprint: res.Fingerprint,
-				CreatedAt:   now.Format(time.RFC3339),
+				CreatedAt:   store.Stamp(now),
 				Storage:     store.StorageNone,
 			}
 			if pass != nil {

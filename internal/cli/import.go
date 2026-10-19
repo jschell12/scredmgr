@@ -37,7 +37,7 @@ func newImportCmd() *cobra.Command {
 				return err
 			}
 
-			now := time.Now().Format(time.RFC3339)
+			now := store.Stamp(time.Now())
 			type result struct {
 				ID     string `json:"id"`
 				EnvVar string `json:"envVar"`
