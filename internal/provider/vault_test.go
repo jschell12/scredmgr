@@ -3,11 +3,14 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jschell12/scredmgr/internal/store"
 )
@@ -16,12 +19,13 @@ import (
 type fakeVaultServer struct {
 	mu      sync.Mutex
 	data    map[string]string // path (after prefix) -> value
+	meta    map[string]string // path (after prefix) -> raw metadata response body
 	token   string
 	lastReq *http.Request
 }
 
 func newFakeVault(token string) (*fakeVaultServer, *httptest.Server) {
-	f := &fakeVaultServer{data: map[string]string{}, token: token}
+	f := &fakeVaultServer{data: map[string]string{}, meta: map[string]string{}, token: token}
 	return f, httptest.NewServer(f)
 }
 
@@ -42,9 +46,23 @@ func (f *fakeVaultServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/v1/secret/metadata/") && (r.Method == "LIST" || r.URL.Query().Get("list") == "true"):
+		// KV v2 LIST semantics: immediate children of the directory, with
+		// sub-directories suffixed "/". Unknown or empty directory: 404.
+		dir := strings.TrimPrefix(r.URL.Path, "/v1/secret/metadata/sm/")
+		seen := map[string]bool{}
 		var keys []string
 		for k := range f.data {
-			keys = append(keys, k)
+			if !strings.HasPrefix(k, dir) {
+				continue
+			}
+			rest := strings.TrimPrefix(k, dir)
+			if i := strings.IndexByte(rest, '/'); i >= 0 {
+				rest = rest[:i+1]
+			}
+			if !seen[rest] {
+				seen[rest] = true
+				keys = append(keys, rest)
+			}
 		}
 		if len(keys) == 0 {
 			w.WriteHeader(http.StatusNotFound)
@@ -52,6 +70,15 @@ func (f *fakeVaultServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"keys": keys}})
+	case strings.HasPrefix(r.URL.Path, "/v1/secret/metadata/") && r.Method == http.MethodGet:
+		key := strings.TrimPrefix(r.URL.Path, "/v1/secret/metadata/sm/")
+		meta, ok := f.meta[key]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]any{"errors": []string{}})
+			return
+		}
+		w.Write([]byte(meta))
 	case strings.HasPrefix(r.URL.Path, "/v1/secret/metadata/") && r.Method == http.MethodDelete:
 		key := strings.TrimPrefix(r.URL.Path, "/v1/secret/metadata/sm/")
 		delete(f.data, key)
@@ -144,17 +171,72 @@ func TestVaultTokenFromKeychainRef(t *testing.T) {
 	}
 }
 
-func TestVaultListSkipsNested(t *testing.T) {
+func TestVaultListRecursesIntoPaths(t *testing.T) {
 	f, srv := newFakeVault("t")
 	defer srv.Close()
+	// Put writes path-qualified ids as nested keys; List must return them.
 	f.data["flat"] = "v"
-	f.data["nested/"] = "dir-marker"
+	f.data["custom:KEY"] = "v"
+	f.data["work/jira"] = "v"
+	f.data["work/github"] = "v"
+	f.data["a/b/c/d/e"] = "too-deep"
 	v := newTestVault(t, srv.URL, "vault-token", "t")
+	if err := v.Put(context.Background(), "proj/NEW_KEY", []byte("v")); err != nil {
+		t.Fatal(err)
+	}
 	ids, err := v.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 1 || ids[0] != "flat" {
-		t.Fatalf("nested path not skipped: %v", ids)
+	sort.Strings(ids)
+	want := []string{"custom:KEY", "flat", "proj/NEW_KEY", "work/github", "work/jira"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("list = %v, want %v", ids, want)
+	}
+}
+
+// metadataFixture is the shape of a real KV v2 metadata read, captured
+// 2026-10-19 from `vault server -dev` (2.0.3) after a create then an update;
+// ids, times and client ids are as captured. Fields this code does not read
+// (last_updated_by, client_id) are kept so the fixture stays a real response.
+const metadataFixture = `{"request_id":"c733d64b-e243-96e0-039d-886ba3c47073","lease_id":"","renewable":false,"lease_duration":0,"data":{"cas_required":false,"created_time":"2026-10-19T17:01:38.656605Z","current_version":2,"custom_metadata":null,"delete_version_after":"0s","last_updated_by":{"actor":"token","operation":"update","client_id":"rwPB+fpMrWfATB0Dge7A+Lc/iWASUM+cq6aHDAzKcUM="},"max_versions":0,"oldest_version":0,"updated_time":"2026-10-19T17:01:38.94357Z","versions":{"1":{"created_by":{"actor":"token","operation":"create","client_id":"0DHqvq2D77kL2/JTPSZkTMJbkFVmUu0TzMi0jiXcFy8="},"created_time":"2026-10-19T17:01:38.656605Z","deleted_by":null,"deletion_time":"","destroyed":false},"2":{"created_by":{"actor":"token","operation":"update","client_id":"rwPB+fpMrWfATB0Dge7A+Lc/iWASUM+cq6aHDAzKcUM="},"created_time":"2026-10-19T17:01:38.94357Z","deleted_by":null,"deletion_time":"","destroyed":false}}},"wrap_info":null,"warnings":null,"auth":null,"mount_type":"kv"}`
+
+func TestVaultUpdatedAt(t *testing.T) {
+	f, srv := newFakeVault("t")
+	defer srv.Close()
+	v := newTestVault(t, srv.URL, "vault-token", "t")
+	ctx := context.Background()
+
+	f.meta["custom:EXISTING"] = metadataFixture
+	got, err := v.UpdatedAt(ctx, "custom:EXISTING")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := time.Parse(time.RFC3339Nano, "2026-10-19T17:01:38.94357Z")
+	if !got.Equal(want) {
+		t.Fatalf("UpdatedAt = %v, want current version 2's created_time %v", got, want)
+	}
+
+	// Current version soft-deleted (deletion_time in the past).
+	f.meta["gone"] = strings.Replace(metadataFixture,
+		`"created_time":"2026-10-19T17:01:38.94357Z","deleted_by":null,"deletion_time":""`,
+		`"created_time":"2026-10-19T17:01:38.94357Z","deleted_by":null,"deletion_time":"2026-10-19T17:05:00Z"`, 1)
+	if _, err := v.UpdatedAt(ctx, "gone"); !errors.Is(err, ErrNoCurrentValue) {
+		t.Fatalf("deleted current version: err = %v, want ErrNoCurrentValue", err)
+	}
+
+	// deletion_time in the future (delete_version_after) is not deleted yet.
+	f.meta["later"] = strings.Replace(metadataFixture,
+		`"deleted_by":null,"deletion_time":"","destroyed":false}}}`,
+		`"deleted_by":null,"deletion_time":"2999-01-01T00:00:00Z","destroyed":false}}}`, 1)
+	if f.meta["later"] == metadataFixture || f.meta["gone"] == metadataFixture {
+		t.Fatal("fixture edit did not apply; the deletion cases test nothing")
+	}
+	if _, err := v.UpdatedAt(ctx, "later"); err != nil {
+		t.Fatalf("future deletion_time: %v", err)
+	}
+
+	if _, err := v.UpdatedAt(ctx, "missing"); err == nil {
+		t.Fatal("missing entry: want error")
 	}
 }

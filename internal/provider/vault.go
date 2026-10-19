@@ -141,10 +141,21 @@ func (v *Vault) Check(ctx context.Context) error {
 	return nil
 }
 
+// maxListDepth bounds recursion into nested paths under the prefix. Ids are
+// "<path>/<name>"; anything deeper than this is not an id scredmgr wrote.
+const maxListDepth = 4
+
+// List returns every entry under the prefix, recursing into nested paths so
+// that path-qualified ids ("work/jira", which Put writes as nested keys) are
+// listed as well as root ids.
 func (v *Vault) List(ctx context.Context) ([]string, error) {
-	data, status, err := v.do(ctx, "LIST", v.url("metadata", ""), nil)
+	return v.listDir(ctx, "", 0)
+}
+
+func (v *Vault) listDir(ctx context.Context, dir string, depth int) ([]string, error) {
+	data, status, err := v.do(ctx, "LIST", v.url("metadata", dir), nil)
 	if status == http.StatusNotFound {
-		return nil, nil // empty prefix
+		return nil, nil // empty prefix (or a directory emptied since the parent LIST)
 	}
 	if err != nil {
 		return nil, err
@@ -160,11 +171,72 @@ func (v *Vault) List(ctx context.Context) ([]string, error) {
 	var ids []string
 	for _, k := range out.Data.Keys {
 		if strings.HasSuffix(k, "/") {
-			continue // nested paths are unsupported; single level only
+			if depth+1 >= maxListDepth {
+				continue
+			}
+			sub, err := v.listDir(ctx, dir+k, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			ids = append(ids, sub...)
+			continue
 		}
-		ids = append(ids, k)
+		ids = append(ids, dir+k)
 	}
 	return ids, nil
+}
+
+// deletedBy reports whether a KV v2 deletion_time has passed. It is set to a
+// future time (not yet deleted) when the mount has delete_version_after.
+func deletedBy(deletionTime string, now time.Time) bool {
+	if deletionTime == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, deletionTime)
+	if err != nil {
+		return true // unparseable: treat as deleted rather than pull it
+	}
+	return !t.After(now)
+}
+
+// UpdatedAt reads the KV v2 metadata for id (no secret value) and returns the
+// time its current version was written. A soft-deleted or destroyed current
+// version returns ErrNoCurrentValue.
+func (v *Vault) UpdatedAt(ctx context.Context, id string) (time.Time, error) {
+	data, _, err := v.do(ctx, http.MethodGet, v.url("metadata", id), nil)
+	if err != nil {
+		return time.Time{}, err
+	}
+	var out struct {
+		Data struct {
+			CurrentVersion int    `json:"current_version"`
+			UpdatedTime    string `json:"updated_time"`
+			Versions       map[string]struct {
+				CreatedTime  string `json:"created_time"`
+				DeletionTime string `json:"deletion_time"`
+				Destroyed    bool   `json:"destroyed"`
+			} `json:"versions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return time.Time{}, fmt.Errorf("vault metadata %s: parse: %w", id, err)
+	}
+	// Prefer the current version's own created_time: updated_time also moves
+	// on metadata-only writes (custom_metadata, max_versions).
+	stamp := out.Data.UpdatedTime
+	if cur, ok := out.Data.Versions[fmt.Sprint(out.Data.CurrentVersion)]; ok {
+		if cur.Destroyed || deletedBy(cur.DeletionTime, time.Now()) {
+			return time.Time{}, ErrNoCurrentValue
+		}
+		if cur.CreatedTime != "" {
+			stamp = cur.CreatedTime
+		}
+	}
+	t, err := time.Parse(time.RFC3339Nano, stamp)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("vault metadata %s: bad timestamp %q", id, stamp)
+	}
+	return t, nil
 }
 
 func (v *Vault) Get(ctx context.Context, id string) ([]byte, error) {

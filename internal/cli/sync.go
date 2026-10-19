@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -19,8 +21,11 @@ import (
 var openProvider = provider.Open
 
 type syncResult struct {
-	ID     string `json:"id"`
-	Action string `json:"action"` // pushed | pulled | would-push | would-pull | skipped | failed
+	ID string `json:"id"`
+	// pushed | pulled | would-push | would-pull | skipped | failed, plus for
+	// --newer: unchanged (local already matches the remote's latest write)
+	// and kept-local (local changed after the remote copy; not overwritten).
+	Action string `json:"action"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -31,6 +36,9 @@ func newSyncCmd() *cobra.Command {
 		only      string
 		dryRun    bool
 		overwrite bool
+		newer     bool
+		since     string
+		include   string
 	)
 	cmd := &cobra.Command{
 		Use:   "sync <provider>",
@@ -60,6 +68,30 @@ func newSyncCmd() *cobra.Command {
 			if push && !p.Writable() {
 				return fmt.Errorf("provider %s is read-only; --push is not supported", p.Name())
 			}
+			if push && (newer || since != "") {
+				return errors.New("--newer and --since apply to --pull only")
+			}
+			var sinceT *time.Time
+			if since != "" {
+				t, err := time.Parse(time.RFC3339, since)
+				if err != nil {
+					return fmt.Errorf("--since: want an RFC3339 time (e.g. 2026-10-19T17:00:00Z): %w", err)
+				}
+				sinceT = &t
+			}
+			var patterns []string
+			if include != "" {
+				for _, pat := range strings.Split(include, ",") {
+					pat = strings.TrimSpace(pat)
+					if pat == "" {
+						continue
+					}
+					if _, err := path.Match(pat, ""); err != nil {
+						return fmt.Errorf("--include: bad pattern %q: %w", pat, err)
+					}
+					patterns = append(patterns, pat)
+				}
+			}
 
 			var onlySet map[string]bool
 			if only != "" {
@@ -71,10 +103,13 @@ func newSyncCmd() *cobra.Command {
 
 			ctx := cmd.Context()
 			var results []syncResult
+			filter := idFilter{only: onlySet, include: patterns}
 			if push {
-				results, err = syncPush(ctx, p, onlySet, dryRun)
+				results, err = syncPush(ctx, p, filter, dryRun)
 			} else {
-				results, err = syncPull(ctx, p, onlySet, dryRun, overwrite)
+				results, err = syncPull(ctx, p, filter, pullOpts{
+					dryRun: dryRun, overwrite: overwrite, newer: newer, since: sinceT,
+				})
 			}
 			if err != nil {
 				return err
@@ -95,6 +130,8 @@ func newSyncCmd() *cobra.Command {
 					"pushed":    counts["pushed"],
 					"pulled":    counts["pulled"],
 					"skipped":   counts["skipped"],
+					"unchanged": counts["unchanged"],
+					"keptLocal": counts["kept-local"],
 					"failed":    failed,
 				})
 			} else {
@@ -120,11 +157,38 @@ func newSyncCmd() *cobra.Command {
 	cmd.Flags().StringVar(&only, "only", "", "comma-separated ids to limit the sync to")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the plan without transferring any values")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "pull: replace entries that already exist locally")
+	cmd.Flags().BoolVar(&newer, "newer", false, "pull: replace a local entry only when the remote value is newer than its last local change")
+	cmd.Flags().StringVar(&since, "since", "", "pull: skip remote entries written before this RFC3339 time")
+	cmd.Flags().StringVar(&include, "include", "", "comma-separated id glob patterns to limit the sync to")
 	cmd.MarkFlagsMutuallyExclusive("push", "pull")
+	cmd.MarkFlagsMutuallyExclusive("overwrite", "newer")
 	return cmd
 }
 
-func syncPush(ctx context.Context, p provider.Provider, only map[string]bool, dryRun bool) ([]syncResult, error) {
+// idFilter is the --only / --include selection. A nil only and empty include
+// select everything.
+type idFilter struct {
+	only    map[string]bool
+	include []string
+}
+
+func (f idFilter) match(id string) bool {
+	if f.only != nil && !f.only[id] {
+		return false
+	}
+	if len(f.include) == 0 {
+		return true
+	}
+	for _, pat := range f.include {
+		if ok, _ := path.Match(pat, id); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func syncPush(ctx context.Context, p provider.Provider, filter idFilter, dryRun bool) ([]syncResult, error) {
+	only := filter.only
 	ids, err := store.ListIDs()
 	if err != nil {
 		return nil, err
@@ -132,7 +196,7 @@ func syncPush(ctx context.Context, p provider.Provider, only map[string]bool, dr
 	sort.Strings(ids)
 	var results []syncResult
 	for _, id := range ids {
-		if only != nil && !only[id] {
+		if !filter.match(id) {
 			continue
 		}
 		m, err := store.ReadMeta(id)
@@ -171,7 +235,53 @@ func syncPush(ctx context.Context, p provider.Provider, only map[string]bool, dr
 	return results, nil
 }
 
-func syncPull(ctx context.Context, p provider.Provider, only map[string]bool, dryRun, overwrite bool) ([]syncResult, error) {
+type pullOpts struct {
+	dryRun    bool
+	overwrite bool
+	newer     bool
+	since     *time.Time
+}
+
+// localChangeTime is the latest moment the local entry's value was written:
+// set/import/pull stamp createdAt, a pull stamps syncedAt, a share sharedAt.
+// ok is false when no timestamp parses, in which case --newer keeps local.
+func localChangeTime(m *store.Meta) (time.Time, bool) {
+	var latest time.Time
+	ok := false
+	for _, s := range []string{m.CreatedAt, m.SyncedAt, m.SharedAt} {
+		if s == "" {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			continue
+		}
+		if !ok || t.After(latest) {
+			latest, ok = t, true
+		}
+	}
+	return latest, ok
+}
+
+// remoteAfter reports whether remoteAt is strictly later than the recorded
+// RFC3339 stamp. An unparseable stamp counts as "after" so the time
+// comparison below decides instead.
+func remoteAfter(remoteAt time.Time, recorded string) bool {
+	t, err := time.Parse(time.RFC3339Nano, recorded)
+	if err != nil {
+		return true
+	}
+	return remoteAt.After(t)
+}
+
+func syncPull(ctx context.Context, p provider.Provider, filter idFilter, o pullOpts) ([]syncResult, error) {
+	var ts provider.Timestamped
+	if o.newer || o.since != nil {
+		var ok bool
+		if ts, ok = p.(provider.Timestamped); !ok {
+			return nil, fmt.Errorf("provider %s cannot report write times; --newer/--since are not supported", p.Name())
+		}
+	}
 	remoteIDs, err := p.List(ctx)
 	if err != nil {
 		return nil, err
@@ -183,18 +293,65 @@ func syncPull(ctx context.Context, p provider.Provider, only map[string]bool, dr
 	}
 	var results []syncResult
 	for _, id := range remoteIDs {
-		if only != nil && !only[id] {
+		if !filter.match(id) {
 			continue
 		}
 		if err := store.ValidateID(id); err != nil {
 			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "invalid id for local store"})
 			continue
 		}
-		if _, err := store.ReadMeta(id); err == nil && !overwrite {
+		prev, perr := store.ReadMeta(id)
+		exists := perr == nil
+		if exists && !o.overwrite && !o.newer {
 			results = append(results, syncResult{ID: id, Action: "skipped", Reason: "exists locally (use --overwrite)"})
 			continue
 		}
-		if dryRun {
+
+		// compareLocal: remote is newer than the local entry, so fetch the
+		// value and skip the keychain write if it already matches.
+		compareLocal := false
+		remoteStamp := ""
+		if ts != nil {
+			remoteAt, err := ts.UpdatedAt(ctx, id)
+			if errors.Is(err, provider.ErrNoCurrentValue) {
+				results = append(results, syncResult{ID: id, Action: "skipped", Reason: "remote current version is deleted"})
+				continue
+			}
+			if err != nil {
+				results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+				continue
+			}
+			if o.since != nil && remoteAt.Before(*o.since) {
+				if exists {
+					results = append(results, syncResult{ID: id, Action: "unchanged"})
+				} else {
+					results = append(results, syncResult{ID: id, Action: "skipped", Reason: "written before --since"})
+				}
+				continue
+			}
+			remoteStamp = remoteAt.UTC().Format(time.RFC3339Nano)
+			if exists && o.newer {
+				localAt, ok := localChangeTime(prev)
+				switch {
+				case prev.SyncedFrom == p.Name() && prev.RemoteAt != "" && !remoteAfter(remoteAt, prev.RemoteAt):
+					// Nothing written remotely since the copy we hold.
+					results = append(results, syncResult{ID: id, Action: "unchanged"})
+					continue
+				case !ok:
+					results = append(results, syncResult{ID: id, Action: "kept-local", Reason: "local entry has no timestamp"})
+					continue
+				case !remoteAt.After(localAt) && prev.SyncedFrom == p.Name():
+					results = append(results, syncResult{ID: id, Action: "unchanged"})
+					continue
+				case !remoteAt.After(localAt):
+					results = append(results, syncResult{ID: id, Action: "kept-local", Reason: "local entry changed after the remote copy"})
+					continue
+				}
+				compareLocal = true
+			}
+		}
+
+		if o.dryRun {
 			results = append(results, syncResult{ID: id, Action: "would-pull"})
 			continue
 		}
@@ -203,18 +360,32 @@ func syncPull(ctx context.Context, p provider.Provider, only map[string]bool, dr
 			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
 			continue
 		}
+		now := time.Now()
+		if compareLocal {
+			if cur, err := backend.Get(id); err == nil && bytes.Equal(cur, secret) {
+				// Same value (e.g. it was pushed from here): record provenance
+				// so the next run sees local as current, without a keychain write.
+				prev.SyncedFrom, prev.SyncedAt, prev.RemoteAt = p.Name(), now.Format(time.RFC3339), remoteStamp
+				if err := store.WriteMeta(id, prev); err != nil {
+					results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
+					continue
+				}
+				results = append(results, syncResult{ID: id, Action: "unchanged"})
+				continue
+			}
+		}
 		if err := backend.Set(id, secret); err != nil {
 			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
 			continue
 		}
-		now := time.Now()
 		m := &store.Meta{
 			CreatedAt:  now.Format(time.RFC3339),
 			Storage:    store.PlatformStorage(),
 			SyncedFrom: p.Name(),
 			SyncedAt:   now.Format(time.RFC3339),
+			RemoteAt:   remoteStamp,
 		}
-		if prev, err := store.ReadMeta(id); err == nil {
+		if exists {
 			m.Label, m.EnvVar, m.Notes = prev.Label, prev.EnvVar, prev.Notes
 		}
 		if svc := manifest.Find(services, id); svc != nil {
@@ -226,7 +397,9 @@ func syncPull(ctx context.Context, p provider.Provider, only map[string]bool, dr
 			}
 		}
 		if err := store.WriteMeta(id, m); err != nil {
-			backend.Delete(id) // no keychain-only orphans
+			if !exists {
+				backend.Delete(id) // no keychain-only orphans
+			}
 			results = append(results, syncResult{ID: id, Action: "failed", Reason: err.Error()})
 			continue
 		}

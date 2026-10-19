@@ -49,6 +49,11 @@ type Meta struct {
 	// SyncedFrom / SyncedAt record pull provenance from a remote provider.
 	SyncedFrom string `json:"syncedFrom,omitempty"`
 	SyncedAt   string `json:"syncedAt,omitempty"`
+	// RemoteAt is the remote write time (provider clock, RFC3339Nano) of the
+	// value last pulled or confirmed by `sync --pull --newer`. Comparing the
+	// remote against this, rather than against local clock times, keeps the
+	// steady state exact across clock skew and second-precision timestamps.
+	RemoteAt string `json:"remoteAt,omitempty"`
 
 	// SharedFrom / SharedAt record one-shot provenance from a peer machine
 	// (`scredmgr share`). Unlike sync provenance, no remote copy is owned.

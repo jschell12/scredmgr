@@ -95,7 +95,7 @@ scredmgr launchd install    # status --quiet --notify at 09:30
 | `ssh keygen <name> --passphrase-random\|--passphrase-prompt\|--no-passphrase` | Generate ed25519 key pair; passphrase in keychain, metadata + rotation reminder in the ledger |
 | `ssh show <name>` | Public key + fingerprint (TTY-safe) |
 | `ssh add <name>` | (Re)register with ssh-agent via stored passphrase |
-| `sync <provider> --push\|--pull [--only a,b] [--dry-run] [--overwrite]` | Copy secrets keychain ↔ remote provider |
+| `sync <provider> --push\|--pull [--only a,b] [--include 'glob,…'] [--dry-run] [--overwrite\|--newer] [--since T]` | Copy secrets keychain ↔ remote provider |
 | `providers` / `providers check <name>` | List configured remote providers / probe connectivity and auth |
 | `share [--to host] [--only a,b] [--dry-run] [--overwrite] [--ignore-vpn] [--probe]` | Send secrets to another machine over ssh (VPN-gated; interactive host/entry pickers on a TTY) |
 | `receive --stdin [--overwrite]` | Store a share payload from stdin (run on the receiving machine, usually via ssh) |
@@ -220,6 +220,34 @@ explicit, direction-only sync targets configured in
   (passphrases don't belong remote by default).
 - Pulled entries get `syncedFrom`/`syncedAt` metadata plus manifest defaults
   (env var, expiry) when the id matches a service.
+- `--include 'custom:*,*/*'` limits either direction to ids matching any of
+  the comma-separated globs (`path.Match` syntax, so `*` does not cross `/`).
+
+#### Unattended pulls: `--newer` and `--since`
+
+Plain `--pull` never replaces a local entry, and `--overwrite` always does.
+Neither is safe to run from a scheduler, so `--pull` also takes:
+
+- `--newer`: replace a local entry only when the remote value was written
+  after the entry last changed locally (its `createdAt`, `syncedAt` or
+  `sharedAt`). A local entry changed after the remote copy is reported
+  `kept-local` and left alone; one already matching the remote's latest write
+  is `unchanged` and costs one metadata read, no value fetch. If the remote is
+  newer but holds the same value (you pushed it), only provenance is recorded.
+  An entry with no local timestamp is always kept.
+- `--since <RFC3339>`: skip remote entries written before that time. Without
+  it, a scheduled pull recreates every remote entry you deleted locally on
+  purpose; give it the time the schedule was installed.
+
+Both need a provider that reports write times without reading the value
+(Vault does, from KV v2 metadata). The provider's clock decides "newer", so
+keep machine clocks in sync; the steady state does not depend on it, because
+a pull records the remote write time it synced to (`remoteAt`).
+
+```sh
+scredmgr sync homelab-vault --pull --newer --since 2026-10-19T00:00:00Z \
+  --include 'custom:*,*/*'
+```
 
 ### Vault
 
@@ -236,8 +264,9 @@ explicit, direction-only sync targets configured in
 The token comes from the keychain entry named by `tokenRef` (the Vault token
 is itself a managed, expirable secret) with `VAULT_TOKEN` as fallback. For a
 privately-signed endpoint, point `caCert` at the CA PEM file (fallback:
-`VAULT_CACERT`, same convention as the vault CLI). LIST is single-level:
-nested paths under the prefix are skipped.
+`VAULT_CACERT`, same convention as the vault CLI). LIST recurses into nested
+paths, so path-qualified ids (`work/jira`, which `--push` writes as nested
+keys) pull back as well.
 
 ### 1Password
 
