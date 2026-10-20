@@ -16,3 +16,6 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./cmd/scredmgr
+      # Ad-hoc signed here (no identity on the runner); check-app.sh still
+      # verifies the bundle id, Info.plist keys and that the signature binds it.
+      - run: make app CODESIGN_ID=-
