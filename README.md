@@ -13,6 +13,66 @@ cleartext**.
 make install    # builds and installs to ~/.local/bin/scredmgr
 ```
 
+### Local network access from launchd
+
+macOS Local Network Privacy blocks connections to LAN addresses (a
+self-hosted Vault on `10.x`/`192.168.x`, for example) unless the user has
+allowed the app making them. From a terminal, scredmgr inherits the
+terminal's permission. Run by launchd, a bare binary has no app to ask on
+behalf of: the system cannot show the prompt, denies the connection silently,
+and never lists it under System Settings > Privacy & Security > Local
+Network. The error is `connect: no route to host`.
+
+The fix is to run scredmgr from an app bundle. macOS then attributes the
+connection to the bundle, shows the prompt once, and remembers the answer per
+bundle id.
+
+```sh
+make app            # bin/scredmgr.app, signed with CODESIGN_ID, then checked
+make install-app    # copies it to ~/Applications/scredmgr.app, registers it
+                    # with LaunchServices, and symlinks ~/.local/bin/scredmgr
+                    # to its executable
+```
+
+The bundle is the same binary with an `Info.plist` beside it (`LSUIElement`
+so it never shows in the Dock, `NSLocalNetworkUsageDescription` for the prompt
+text). Its signing identifier and designated requirement match `make build`,
+so keychain items that already trust scredmgr keep trusting it.
+
+Point LaunchAgents at the bundle's executable, not at the symlink, so a later
+`make install` (which replaces the symlink with a plain copy) cannot take the
+grant away from them:
+
+```xml
+<string>/Users/you/Applications/scredmgr.app/Contents/MacOS/scredmgr</string>
+```
+
+Then trigger the prompt once from launchd, not from a terminal (a terminal run
+is attributed to the terminal):
+
+```sh
+launchctl submit -l scredmgr.lan-check -- \
+  "$HOME/Applications/scredmgr.app/Contents/MacOS/scredmgr" \
+  sync <provider> --pull --dry-run
+# macOS asks whether scredmgr may find devices on the local network: Allow
+launchctl remove scredmgr.lan-check
+```
+
+If the prompt was dismissed or denied, turn scredmgr on under System
+Settings > Privacy & Security > Local Network.
+
+What has been observed, so you know what to expect:
+
+- The bundle has to be registered with LaunchServices at a stable path
+  (`install-app` does it). Unregistered, or run from a temporary directory,
+  it gets no prompt.
+- The grant survives rebuilds. After `make install-app` replaces the
+  executable, the first LAN connection can still fail while macOS refreshes
+  what it knows about the bundle; the ones after it succeed without a new
+  prompt.
+- A bare copy of the binary elsewhere (`make install`) is still blocked from
+  launchd even after the bundle is allowed.
+
 ## Quick start
 
 Migrate off a plaintext dotenv:
