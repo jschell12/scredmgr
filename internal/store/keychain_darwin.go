@@ -50,14 +50,18 @@ func (k *KeychainStore) Set(id string, secret []byte) error {
 
 	err := keychain.AddItem(item)
 	if errors.Is(err, keychain.ErrorDuplicateItem) {
+		// An update keeps the item's access list as it is. Re-applying the ACL here pinned the item to this exact
+		// binary on every write, which is a "wants to change access permissions" password prompt each time, and it
+		// undid the team-signature partition list set with `security set-generic-password-partition-list` (2026-10-24).
+		// PFE Admin saves its Xbox sign-in on every token refresh, so that was a prompt per refresh (2026-10-26).
 		update := keychain.NewItem()
 		update.SetData(secret)
-		err = keychain.UpdateItem(newItem(id), update)
+		return keychain.UpdateItem(newItem(id), update)
 	}
 	if err != nil {
 		return err
 	}
-	applyACL(id)
+	applyACL(id) // a new item only
 	return nil
 }
 
