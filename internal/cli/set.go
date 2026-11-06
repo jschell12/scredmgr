@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ func newSetCmd() *cobra.Command {
 		label      string
 		notes      string
 		expiryDays int
+		ifChanged  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "set <id>",
@@ -52,6 +54,13 @@ func newSetCmd() *cobra.Command {
 			}
 			safety.Track(secret)
 
+			// --if-changed: an identical stored value is left alone. Writing
+			// it again can raise a keychain prompt per entry, which is what a
+			// login-time sync of every file-based secret ran into (2026-11-06).
+			// An unchanged entry also skips the live verification below.
+			unchanged := ifChanged && storedEquals(id, secret)
+			explicitExpiry := expiryDays
+
 			services, err := manifest.Load()
 			if err != nil {
 				return err
@@ -60,7 +69,7 @@ func newSetCmd() *cobra.Command {
 
 			// Fail closed: if the service defines a live check, a token that
 			// does not pass it is not stored.
-			if svc != nil && svc.CheckPath != "" {
+			if !unchanged && svc != nil && svc.CheckPath != "" {
 				if err := manifest.Verify(svc, string(secret)); err != nil {
 					return fmt.Errorf("verification failed, secret NOT stored: %w", err)
 				}
@@ -97,6 +106,22 @@ func newSetCmd() *cobra.Command {
 				m.ExpiresAt = now.AddDate(0, 0, expiryDays).Format(time.RFC3339)
 			}
 
+			if unchanged {
+				explicit := &store.Meta{Label: label, EnvVar: envVar, Notes: notes}
+				if explicitExpiry > 0 {
+					explicit.ExpiresAt = m.ExpiresAt
+				}
+				if err := refreshUnchangedMeta(id, m, explicit); err != nil {
+					return err
+				}
+				if jsonOut {
+					emit(map[string]any{"id": id, "unchanged": true})
+				} else {
+					fmt.Printf("unchanged %s (keychain)\n", id)
+				}
+				return nil
+			}
+
 			if err := backend.Set(id, secret); err != nil {
 				return err
 			}
@@ -117,5 +142,60 @@ func newSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&label, "label", "", "human-readable label")
 	cmd.Flags().StringVar(&notes, "notes", "", "free-form notes")
 	cmd.Flags().IntVar(&expiryDays, "expiry-days", 0, "days until expiry (default from manifest)")
+	cmd.Flags().BoolVar(&ifChanged, "if-changed", false, "skip the keychain write when the stored value is already identical")
 	return cmd
+}
+
+// storedEquals reports whether id already holds exactly secret in the
+// backend. Any read failure (missing item, locked keychain, denied access)
+// returns false, so the caller writes: a failed read never counts as "same".
+// The stored value is compared in memory and never printed; the copy is
+// zeroed before returning.
+func storedEquals(id string, secret []byte) bool {
+	cur, err := backend.Get(id)
+	if err != nil {
+		return false
+	}
+	defer clear(cur)
+	return subtle.ConstantTimeCompare(cur, secret) == 1
+}
+
+// refreshUnchangedMeta handles the metadata of an entry whose stored value is
+// already identical, without touching the keychain. If the metadata file is
+// missing or unreadable it writes fresh, the full record the normal path would
+// have written (manifest env var and expiry included). Otherwise it keeps the
+// existing record, creation and expiry stamps included, and applies only the
+// fields the caller set explicitly (non-empty in explicit).
+func refreshUnchangedMeta(id string, fresh, explicit *store.Meta) error {
+	prev, err := store.ReadMeta(id)
+	if err != nil {
+		return store.WriteMeta(id, fresh)
+	}
+	changed := false
+	// A pre-migration record may still hold the value in plaintext. A normal
+	// write replaces the file without it; do the same here. The keychain was
+	// just read and holds the value, so nothing is lost.
+	if prev.Token != "" {
+		prev.Token = ""
+		prev.Storage = store.PlatformStorage()
+		changed = true
+	}
+	for _, f := range []struct {
+		dst *string
+		v   string
+	}{
+		{&prev.EnvVar, explicit.EnvVar},
+		{&prev.Label, explicit.Label},
+		{&prev.Notes, explicit.Notes},
+		{&prev.ExpiresAt, explicit.ExpiresAt},
+	} {
+		if f.v != "" && *f.dst != f.v {
+			*f.dst = f.v
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return store.WriteMeta(id, prev)
 }
