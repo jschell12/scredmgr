@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ func newSetCmd() *cobra.Command {
 		label      string
 		notes      string
 		expiryDays int
+		ifChanged  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "set <id>",
@@ -51,6 +53,23 @@ func newSetCmd() *cobra.Command {
 				return errors.New("refusing to store an empty secret")
 			}
 			safety.Track(secret)
+
+			// --if-changed: an identical stored value is left alone. Writing
+			// it again can raise a keychain prompt per entry, which is what a
+			// login-time sync of every file-based secret ran into (2026-11-06).
+			// Checked before the live verification so an unchanged entry costs
+			// no network call either.
+			if ifChanged && storedEquals(id, secret) {
+				if err := refreshMetaIfNeeded(id, envVar, label, notes); err != nil {
+					return err
+				}
+				if jsonOut {
+					emit(map[string]any{"id": id, "unchanged": true})
+				} else {
+					fmt.Printf("unchanged %s (keychain)\n", id)
+				}
+				return nil
+			}
 
 			services, err := manifest.Load()
 			if err != nil {
@@ -117,5 +136,52 @@ func newSetCmd() *cobra.Command {
 	cmd.Flags().StringVar(&label, "label", "", "human-readable label")
 	cmd.Flags().StringVar(&notes, "notes", "", "free-form notes")
 	cmd.Flags().IntVar(&expiryDays, "expiry-days", 0, "days until expiry (default from manifest)")
+	cmd.Flags().BoolVar(&ifChanged, "if-changed", false, "skip the keychain write when the stored value is already identical")
 	return cmd
+}
+
+// storedEquals reports whether id already holds exactly secret in the
+// backend. Any read failure (missing item, locked keychain, denied access)
+// returns false, so the caller writes: a failed read never counts as "same".
+// The stored value is compared in memory and never printed; the copy is
+// zeroed before returning.
+func storedEquals(id string, secret []byte) bool {
+	cur, err := backend.Get(id)
+	if err != nil {
+		return false
+	}
+	defer clear(cur)
+	return subtle.ConstantTimeCompare(cur, secret) == 1
+}
+
+// refreshMetaIfNeeded brings an unchanged entry's metadata in line with any
+// fields the caller passed, without touching the keychain. A missing metadata
+// file is recreated; an existing one keeps its creation and expiry stamps.
+func refreshMetaIfNeeded(id, envVar, label, notes string) error {
+	prev, err := store.ReadMeta(id)
+	if err != nil {
+		return store.WriteMeta(id, &store.Meta{
+			Label:     label,
+			EnvVar:    envVar,
+			Notes:     notes,
+			CreatedAt: store.Stamp(time.Now()),
+			Storage:   store.PlatformStorage(),
+		})
+	}
+	changed := false
+	for _, f := range []struct {
+		dst *string
+		v   string
+	}{
+		{&prev.EnvVar, envVar}, {&prev.Label, label}, {&prev.Notes, notes},
+	} {
+		if f.v != "" && *f.dst != f.v {
+			*f.dst = f.v
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return store.WriteMeta(id, prev)
 }

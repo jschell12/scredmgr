@@ -139,7 +139,7 @@ scredmgr launchd install    # status --quiet --notify at 09:30
 
 | Command | Behavior |
 |---|---|
-| `set <id> [--from-stdin] [--env-var VAR]` | Masked prompt or stdin (never argv). Fails closed if the service's live check rejects the token |
+| `set <id> [--from-stdin] [--env-var VAR] [--if-changed]` | Masked prompt or stdin (never argv). Fails closed if the service's live check rejects the token. `--if-changed` reads the stored value and skips the keychain write when it is identical (prints `unchanged <id>`); a failed read counts as changed |
 | `get <id>` | Print secret to stdout — refuses if stdout is a TTY (exit 2) |
 | `rm <id> [--files]` | Delete keychain + metadata (`--files` also deletes ssh key files) |
 | `ls [--path ns]` | List entries |
@@ -147,7 +147,7 @@ scredmgr launchd install    # status --quiet --notify at 09:30
 | `check <id>` | Live API verify via the service's `checkPath` |
 | `curl <id> <url> [args…]` | Injects auth header via curl stdin config (never argv); refuses cross-host URLs |
 | `run [--path ns] [--only a,b] -- <cmd…>` | Exec child with secrets as env vars. `--path` overlays a namespace over the root entries |
-| `import <dotenv>` | One keychain entry per `export KEY=value` line |
+| `import <dotenv> [--if-changed]` | One keychain entry per `export KEY=value` line. `--if-changed` skips keys whose stored value is identical |
 | `export [--path ns]` | Plaintext escape hatch, gated behind `SCREDMGR_ALLOW_EXPORT=1` |
 | `login <id> [--clipboard]` | Guided mint: open `tokenPage`, capture, verify fail-closed, store with expiry |
 | `services` | Emit the manifest |

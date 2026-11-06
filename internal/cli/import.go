@@ -14,7 +14,8 @@ import (
 )
 
 func newImportCmd() *cobra.Command {
-	return &cobra.Command{
+	var ifChanged bool
+	cmd := &cobra.Command{
 		Use:   "import <dotenv-file>",
 		Short: "Import a dotenv file — one entry per KEY, straight into the keychain",
 		Long: "Parses `export KEY=value` lines. If a manifest service declares that envVar,\n" +
@@ -42,7 +43,7 @@ func newImportCmd() *cobra.Command {
 				ID     string `json:"id"`
 				EnvVar string `json:"envVar"`
 			}
-			var imported []result
+			var imported, unchanged []result
 			for _, kv := range pairs {
 				key, val := kv[0], kv[1]
 				if val == "" {
@@ -54,6 +55,13 @@ func newImportCmd() *cobra.Command {
 				id := "custom:" + key
 				if svc := manifest.FindByEnvVar(services, key); svc != nil {
 					id = svc.ID
+				}
+				if ifChanged && storedEquals(id, []byte(val)) {
+					if err := refreshMetaIfNeeded(id, key, "", ""); err != nil {
+						return err
+					}
+					unchanged = append(unchanged, result{ID: id, EnvVar: key})
+					continue
 				}
 				if err := backend.Set(id, []byte(val)); err != nil {
 					return fmt.Errorf("store %s: %w", id, err)
@@ -73,16 +81,25 @@ func newImportCmd() *cobra.Command {
 			}
 
 			if jsonOut {
-				emit(map[string]any{"imported": imported, "source": path})
+				emit(map[string]any{"imported": imported, "unchanged": unchanged, "source": path})
 			} else {
 				for _, r := range imported {
 					fmt.Printf("imported %s (envVar %s)\n", r.ID, r.EnvVar)
 				}
-				fmt.Printf("\n%d entries imported into the keychain.\n", len(imported))
+				for _, r := range unchanged {
+					fmt.Printf("unchanged %s (envVar %s)\n", r.ID, r.EnvVar)
+				}
+				fmt.Printf("\n%d entries imported into the keychain", len(imported))
+				if ifChanged {
+					fmt.Printf(", %d unchanged", len(unchanged))
+				}
+				fmt.Printf(".\n")
 				fmt.Printf("REMINDER: the source file still holds plaintext secrets — shred it:\n")
 				fmt.Printf("  rm -P %s\n", strings.ReplaceAll(path, " ", "\\ "))
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&ifChanged, "if-changed", false, "skip keys whose stored value is already identical")
+	return cmd
 }

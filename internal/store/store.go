@@ -72,9 +72,20 @@ type FakeStore struct {
 	mu       sync.Mutex
 	secrets  map[string][]byte
 	getCalls int
+	setCalls int
 
 	// FailSet, when non-nil, is returned from Set to simulate keychain failures.
 	FailSet error
+	// FailGet, when non-nil, is returned from Get to simulate a locked or
+	// unreadable keychain.
+	FailGet error
+}
+
+// SetCalls reports how many times Set was called.
+func (f *FakeStore) SetCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.setCalls
 }
 
 // GetCalls reports how many times Get was called (dry-run assertions).
@@ -92,6 +103,7 @@ func NewFakeStore() *FakeStore {
 func (f *FakeStore) Set(id string, secret []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.setCalls++
 	if f.FailSet != nil {
 		return f.FailSet
 	}
@@ -105,6 +117,9 @@ func (f *FakeStore) Get(id string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCalls++
+	if f.FailGet != nil {
+		return nil, f.FailGet
+	}
 	s, ok := f.secrets[id]
 	if !ok {
 		return nil, ErrNotFound
