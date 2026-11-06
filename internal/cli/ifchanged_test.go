@@ -240,3 +240,33 @@ func TestSetIfChangedAppliesExplicitExpiry(t *testing.T) {
 		t.Fatalf("meta = %+v, want new expiry and the original CreatedAt", m)
 	}
 }
+
+// An old record that still carries the value in plaintext loses it on the
+// skip path, as it would on a normal write. Metadata only: no keychain write.
+func TestSetIfChangedDropsPlaintextToken(t *testing.T) {
+	fake, _ := withTestEnv(t)
+	if err := fake.Set("proj/K", []byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteMeta("proj/K", &store.Meta{EnvVar: "K", Token: "v", Storage: store.StorageMixed}); err != nil {
+		t.Fatal(err)
+	}
+	before := fake.SetCalls()
+
+	if _, err := runSet(t, "v", "proj/K", "--from-stdin", "--if-changed"); err != nil {
+		t.Fatal(err)
+	}
+	if fake.SetCalls() != before {
+		t.Fatal("keychain written to drop a plaintext token")
+	}
+	m, err := store.ReadMeta("proj/K")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Token != "" {
+		t.Fatal("plaintext token still in metadata")
+	}
+	if m.Storage != store.PlatformStorage() || m.EnvVar != "K" {
+		t.Fatalf("storage %q envVar %q, want %q and K", m.Storage, m.EnvVar, store.PlatformStorage())
+	}
+}

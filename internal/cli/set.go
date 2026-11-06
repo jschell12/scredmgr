@@ -172,6 +172,14 @@ func refreshUnchangedMeta(id string, fresh, explicit *store.Meta) error {
 		return store.WriteMeta(id, fresh)
 	}
 	changed := false
+	// A pre-migration record may still hold the value in plaintext. A normal
+	// write replaces the file without it; do the same here. The keychain was
+	// just read and holds the value, so nothing is lost.
+	if prev.Token != "" {
+		prev.Token = ""
+		prev.Storage = store.PlatformStorage()
+		changed = true
+	}
 	for _, f := range []struct {
 		dst *string
 		v   string
