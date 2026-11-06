@@ -56,16 +56,6 @@ func newImportCmd() *cobra.Command {
 				if svc := manifest.FindByEnvVar(services, key); svc != nil {
 					id = svc.ID
 				}
-				if ifChanged && storedEquals(id, []byte(val)) {
-					if err := refreshMetaIfNeeded(id, key, "", ""); err != nil {
-						return err
-					}
-					unchanged = append(unchanged, result{ID: id, EnvVar: key})
-					continue
-				}
-				if err := backend.Set(id, []byte(val)); err != nil {
-					return fmt.Errorf("store %s: %w", id, err)
-				}
 				m := &store.Meta{
 					EnvVar:    key,
 					CreatedAt: now,
@@ -73,6 +63,16 @@ func newImportCmd() *cobra.Command {
 				}
 				if svc := manifest.Find(services, id); svc != nil && svc.ExpiryDays > 0 {
 					m.ExpiresAt = time.Now().AddDate(0, 0, svc.ExpiryDays).Format(time.RFC3339)
+				}
+				if ifChanged && storedEquals(id, []byte(val)) {
+					if err := refreshUnchangedMeta(id, m, &store.Meta{EnvVar: key}); err != nil {
+						return err
+					}
+					unchanged = append(unchanged, result{ID: id, EnvVar: key})
+					continue
+				}
+				if err := backend.Set(id, []byte(val)); err != nil {
+					return fmt.Errorf("store %s: %w", id, err)
 				}
 				if err := store.WriteMeta(id, m); err != nil {
 					return err

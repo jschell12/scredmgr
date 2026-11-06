@@ -194,3 +194,49 @@ func TestImportIfChangedReadFailureWrites(t *testing.T) {
 		t.Fatal("a failed read skipped the write")
 	}
 }
+
+// Value unchanged but the metadata file is gone: rebuild the full record the
+// normal path writes, manifest env var and expiry included, and skip the live
+// check (the base URL here is unreachable, so running it would fail).
+func TestSetIfChangedRebuildsMissingMetaFromManifest(t *testing.T) {
+	fake, home := withTestEnv(t)
+	svcs := `[{"id":"svc","envVar":"SVC_TOKEN","expiryDays":30,"baseUrl":"http://127.0.0.1:1","checkPath":"/check"}]`
+	if err := os.WriteFile(filepath.Join(home, "services.json"), []byte(svcs), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.Set("svc", []byte("tok")); err != nil {
+		t.Fatal(err)
+	}
+	before := fake.SetCalls()
+
+	if _, err := runSet(t, "tok", "svc", "--from-stdin", "--if-changed"); err != nil {
+		t.Fatal(err)
+	}
+	if fake.SetCalls() != before {
+		t.Fatal("keychain written to rebuild metadata")
+	}
+	m, err := store.ReadMeta("svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.EnvVar != "SVC_TOKEN" || m.ExpiresAt == "" {
+		t.Fatalf("rebuilt meta = %+v, want manifest envVar and expiry", m)
+	}
+}
+
+func TestSetIfChangedAppliesExplicitExpiry(t *testing.T) {
+	fake, _ := withTestEnv(t)
+	addLocal(t, fake, "proj/K", "v", &store.Meta{EnvVar: "K", Storage: store.StorageKeychain, CreatedAt: "2026-01-01T00:00:00Z"})
+	before := fake.SetCalls()
+
+	if _, err := runSet(t, "v", "proj/K", "--from-stdin", "--if-changed", "--expiry-days", "10"); err != nil {
+		t.Fatal(err)
+	}
+	if fake.SetCalls() != before {
+		t.Fatal("keychain written for an expiry-only change")
+	}
+	m, _ := store.ReadMeta("proj/K")
+	if m.ExpiresAt == "" || m.CreatedAt != "2026-01-01T00:00:00Z" {
+		t.Fatalf("meta = %+v, want new expiry and the original CreatedAt", m)
+	}
+}

@@ -57,19 +57,9 @@ func newSetCmd() *cobra.Command {
 			// --if-changed: an identical stored value is left alone. Writing
 			// it again can raise a keychain prompt per entry, which is what a
 			// login-time sync of every file-based secret ran into (2026-11-06).
-			// Checked before the live verification so an unchanged entry costs
-			// no network call either.
-			if ifChanged && storedEquals(id, secret) {
-				if err := refreshMetaIfNeeded(id, envVar, label, notes); err != nil {
-					return err
-				}
-				if jsonOut {
-					emit(map[string]any{"id": id, "unchanged": true})
-				} else {
-					fmt.Printf("unchanged %s (keychain)\n", id)
-				}
-				return nil
-			}
+			// An unchanged entry also skips the live verification below.
+			unchanged := ifChanged && storedEquals(id, secret)
+			explicitExpiry := expiryDays
 
 			services, err := manifest.Load()
 			if err != nil {
@@ -79,7 +69,7 @@ func newSetCmd() *cobra.Command {
 
 			// Fail closed: if the service defines a live check, a token that
 			// does not pass it is not stored.
-			if svc != nil && svc.CheckPath != "" {
+			if !unchanged && svc != nil && svc.CheckPath != "" {
 				if err := manifest.Verify(svc, string(secret)); err != nil {
 					return fmt.Errorf("verification failed, secret NOT stored: %w", err)
 				}
@@ -114,6 +104,22 @@ func newSetCmd() *cobra.Command {
 			}
 			if expiryDays > 0 {
 				m.ExpiresAt = now.AddDate(0, 0, expiryDays).Format(time.RFC3339)
+			}
+
+			if unchanged {
+				explicit := &store.Meta{Label: label, EnvVar: envVar, Notes: notes}
+				if explicitExpiry > 0 {
+					explicit.ExpiresAt = m.ExpiresAt
+				}
+				if err := refreshUnchangedMeta(id, m, explicit); err != nil {
+					return err
+				}
+				if jsonOut {
+					emit(map[string]any{"id": id, "unchanged": true})
+				} else {
+					fmt.Printf("unchanged %s (keychain)\n", id)
+				}
+				return nil
 			}
 
 			if err := backend.Set(id, secret); err != nil {
@@ -154,26 +160,26 @@ func storedEquals(id string, secret []byte) bool {
 	return subtle.ConstantTimeCompare(cur, secret) == 1
 }
 
-// refreshMetaIfNeeded brings an unchanged entry's metadata in line with any
-// fields the caller passed, without touching the keychain. A missing metadata
-// file is recreated; an existing one keeps its creation and expiry stamps.
-func refreshMetaIfNeeded(id, envVar, label, notes string) error {
+// refreshUnchangedMeta handles the metadata of an entry whose stored value is
+// already identical, without touching the keychain. If the metadata file is
+// missing or unreadable it writes fresh, the full record the normal path would
+// have written (manifest env var and expiry included). Otherwise it keeps the
+// existing record, creation and expiry stamps included, and applies only the
+// fields the caller set explicitly (non-empty in explicit).
+func refreshUnchangedMeta(id string, fresh, explicit *store.Meta) error {
 	prev, err := store.ReadMeta(id)
 	if err != nil {
-		return store.WriteMeta(id, &store.Meta{
-			Label:     label,
-			EnvVar:    envVar,
-			Notes:     notes,
-			CreatedAt: store.Stamp(time.Now()),
-			Storage:   store.PlatformStorage(),
-		})
+		return store.WriteMeta(id, fresh)
 	}
 	changed := false
 	for _, f := range []struct {
 		dst *string
 		v   string
 	}{
-		{&prev.EnvVar, envVar}, {&prev.Label, label}, {&prev.Notes, notes},
+		{&prev.EnvVar, explicit.EnvVar},
+		{&prev.Label, explicit.Label},
+		{&prev.Notes, explicit.Notes},
+		{&prev.ExpiresAt, explicit.ExpiresAt},
 	} {
 		if f.v != "" && *f.dst != f.v {
 			*f.dst = f.v
