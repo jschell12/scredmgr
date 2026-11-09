@@ -43,12 +43,7 @@ func (k *KeychainStore) Set(id string, secret []byte) error {
 	if err := ValidateID(id); err != nil {
 		return err
 	}
-	item := newItem(id)
-	item.SetLabel("scredmgr: " + id)
-	item.SetData(secret)
-	item.SetAccessible(keychain.AccessibleWhenUnlocked)
-
-	err := keychain.AddItem(item)
+	err := addWithACL(id, secret)
 	if errors.Is(err, keychain.ErrorDuplicateItem) {
 		// An update keeps the item's access list as it is. Re-applying the ACL here pinned the item to this exact
 		// binary on every write, which is a "wants to change access permissions" password prompt each time, and it
@@ -58,11 +53,7 @@ func (k *KeychainStore) Set(id string, secret []byte) error {
 		update.SetData(secret)
 		return keychain.UpdateItem(newItem(id), update)
 	}
-	if err != nil {
-		return err
-	}
-	applyACL(id) // a new item only
-	return nil
+	return err
 }
 
 func (k *KeychainStore) Get(id string) ([]byte, error) {

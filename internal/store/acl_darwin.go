@@ -8,57 +8,26 @@ package store
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdlib.h>
 
-// The SecTrustedApplication / SecAccess / SecKeychainItemSetAccess APIs are
-// deprecated since macOS 10.10, but remain the ONLY way to set per-application
-// trust lists on keychain items. The modern SecAccessControl API handles user
-// authentication (biometric, passcode) but has no concept of app-level ACLs.
-// Apple has not removed these APIs or provided a replacement.
+// The SecTrustedApplication / SecAccess APIs are deprecated since macOS 10.10,
+// but remain the ONLY way to set per-application trust lists on keychain
+// items. The modern SecAccessControl API handles user authentication
+// (biometric, passcode) but has no concept of app-level ACLs. Apple has not
+// removed these APIs or provided a replacement.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
-// applyACLToItem finds a keychain item by service+account and restricts
-// access to the calling binary. Other applications will trigger a Keychain
-// Access prompt instead of reading the secret silently.
-static OSStatus applyACLToItem(const char *service, const char *account) {
-	OSStatus status;
-
-	CFStringRef cfService = CFStringCreateWithCString(
-		NULL, service, kCFStringEncodingUTF8);
-	CFStringRef cfAccount = CFStringCreateWithCString(
-		NULL, account, kCFStringEncodingUTF8);
-
-	// Query for the item reference.
-	const void *qKeys[] = {
-		kSecClass, kSecAttrService, kSecAttrAccount,
-		kSecMatchLimit, kSecReturnRef,
-	};
-	const void *qVals[] = {
-		kSecClassGenericPassword, cfService, cfAccount,
-		kSecMatchLimitOne, kCFBooleanTrue,
-	};
-	CFDictionaryRef query = CFDictionaryCreate(
-		NULL, qKeys, qVals, 5,
-		&kCFTypeDictionaryKeyCallBacks,
-		&kCFTypeDictionaryValueCallBacks);
-
-	CFTypeRef itemRef = NULL;
-	status = SecItemCopyMatching(query, &itemRef);
-	CFRelease(query);
-	CFRelease(cfService);
-	CFRelease(cfAccount);
-	if (status != errSecSuccess || itemRef == NULL) {
-		return status;
-	}
-
-	// Create a trusted-application entry for the calling binary (NULL = self).
+// addItemWithACL creates a generic-password item whose access list trusts only
+// the calling binary, in one SecItemAdd. The access list goes in at creation
+// (kSecAttrAccess) rather than being applied afterwards: changing an existing
+// item's access list is a "wants to change access permissions" password
+// prompt, which made every new entry cost several prompts (2026-11-09).
+static OSStatus addItemWithACL(const char *service, const char *account,
+                               const char *label, const void *data, long len) {
 	SecTrustedApplicationRef self = NULL;
-	status = SecTrustedApplicationCreateFromPath(NULL, &self);
+	OSStatus status = SecTrustedApplicationCreateFromPath(NULL, &self);
 	if (status != errSecSuccess) {
-		CFRelease(itemRef);
 		return status;
 	}
-
-	// Build a SecAccessRef where only this binary is trusted.
 	CFArrayRef apps = CFArrayCreate(
 		NULL, (const void **)&self, 1, &kCFTypeArrayCallBacks);
 	SecAccessRef access = NULL;
@@ -66,14 +35,38 @@ static OSStatus applyACLToItem(const char *service, const char *account) {
 	CFRelease(apps);
 	CFRelease(self);
 	if (status != errSecSuccess) {
-		CFRelease(itemRef);
 		return status;
 	}
 
-	// Apply the access restriction to the existing item.
-	status = SecKeychainItemSetAccess((SecKeychainItemRef)itemRef, access);
+	CFStringRef cfService = CFStringCreateWithCString(
+		NULL, service, kCFStringEncodingUTF8);
+	CFStringRef cfAccount = CFStringCreateWithCString(
+		NULL, account, kCFStringEncodingUTF8);
+	CFStringRef cfLabel = CFStringCreateWithCString(
+		NULL, label, kCFStringEncodingUTF8);
+	CFDataRef cfData = CFDataCreate(NULL, (const UInt8 *)data, len);
+
+	const void *keys[] = {
+		kSecClass, kSecAttrService, kSecAttrAccount, kSecAttrLabel,
+		kSecValueData, kSecAttrAccess,
+	};
+	const void *vals[] = {
+		kSecClassGenericPassword, cfService, cfAccount, cfLabel,
+		cfData, access,
+	};
+	CFDictionaryRef attrs = CFDictionaryCreate(
+		NULL, keys, vals, 6,
+		&kCFTypeDictionaryKeyCallBacks,
+		&kCFTypeDictionaryValueCallBacks);
+
+	status = SecItemAdd(attrs, NULL);
+
+	CFRelease(attrs);
+	CFRelease(cfData);
+	CFRelease(cfLabel);
+	CFRelease(cfAccount);
+	CFRelease(cfService);
 	CFRelease(access);
-	CFRelease(itemRef);
 	return status;
 }
 
@@ -82,23 +75,30 @@ static OSStatus applyACLToItem(const char *service, const char *account) {
 import "C"
 
 import (
-	"fmt"
-	"os"
 	"unsafe"
+
+	keychain "github.com/keybase/go-keychain"
 )
 
-// applyACL restricts the keychain item for id so that only the current
-// executable can read it without a user prompt. Other applications will
-// trigger a Keychain Access dialog. Failures are logged to stderr but
-// do not block the caller — ACL enforcement is best-effort.
-func applyACL(id string) {
+// addWithACL stores a new keychain item for id that only the current
+// executable can read without a prompt; other applications get a Keychain
+// Access dialog. It returns keychain.ErrorDuplicateItem if the item exists.
+func addWithACL(id string, secret []byte) error {
 	cService := C.CString(keychainService)
 	defer C.free(unsafe.Pointer(cService))
 	cAccount := C.CString(accountPrefix + id)
 	defer C.free(unsafe.Pointer(cAccount))
+	cLabel := C.CString("scredmgr: " + id)
+	defer C.free(unsafe.Pointer(cLabel))
 
-	status := C.applyACLToItem(cService, cAccount)
-	if status != 0 {
-		fmt.Fprintf(os.Stderr, "scredmgr: set keychain ACL for %s: OSStatus %d\n", id, int(status))
+	var p unsafe.Pointer
+	if len(secret) > 0 {
+		p = C.CBytes(secret)
+		defer C.free(p)
 	}
+	status := C.addItemWithACL(cService, cAccount, cLabel, p, C.long(len(secret)))
+	if status != 0 {
+		return keychain.Error(status)
+	}
+	return nil
 }
