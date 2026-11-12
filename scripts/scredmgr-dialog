@@ -1,0 +1,25 @@
+#!/bin/bash
+# Prompt for a secret in a macOS dialog (hidden input) and store it with scredmgr.
+# The value goes dialog -> stdin of `scredmgr set --from-stdin`; it is never echoed,
+# never on argv, and never in shell history.
+#
+# Usage: scredmgr-dialog <scredmgr-id> [label]
+#   scredmgr-dialog custom:HULU_TFE_TOKEN "Hulu TFE user token"
+set -euo pipefail
+
+id="${1:?usage: scredmgr-dialog <scredmgr-id> [label]}"
+label="${2:-$id}"
+label="${label//\"/}"   # keep the AppleScript string literal intact
+
+secret="$(osascript \
+  -e "text returned of (display dialog \"Paste the value for ${label}\" default answer \"\" with hidden answer with title \"scredmgr: ${id}\" buttons {\"Cancel\", \"Save\"} default button \"Save\")" \
+  2>/dev/null)" || { echo "cancelled" >&2; exit 1; }
+
+if [ -z "$secret" ]; then
+  echo "empty value, nothing stored" >&2
+  exit 1
+fi
+
+printf '%s' "$secret" | scredmgr set "$id" --from-stdin
+unset secret
+echo "stored $id"
