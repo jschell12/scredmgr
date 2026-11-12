@@ -32,6 +32,8 @@ install: build
 	install -m 0755 bin/$(BINARY) $(PREFIX)/bin/$(BINARY)
 	# Compat shim: consumers that still call `scredmanager` keep working.
 	ln -sf $(BINARY) $(PREFIX)/bin/scredmanager
+	# macOS dialog front-end for `set` (hidden input piped to --from-stdin).
+	install -m 0755 scripts/scredmgr-dialog $(PREFIX)/bin/scredmgr-dialog
 
 # The same binary inside a minimal app bundle. macOS Local Network Privacy
 # attributes a connection to an app bundle and remembers the user's answer per

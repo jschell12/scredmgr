@@ -135,6 +135,18 @@ scredmgr launchd install    # status --quiet --notify at 09:30
 
 ---
 
+### Dialog prompt (macOS)
+
+`scripts/scredmgr-dialog` opens a native dialog with a hidden field and pipes
+the value into `scredmgr set --from-stdin`, so it never touches a terminal,
+argv, or shell history. Handy when an agent needs you to supply a token: it
+runs the command, you paste into the dialog. Cancel or an empty value stores
+nothing. `make install` puts it in `$(PREFIX)/bin`.
+
+```sh
+scredmgr-dialog custom:HULU_TFE_TOKEN "Hulu TFE user token"
+```
+
 ## Command reference
 
 | Command | Behavior |
